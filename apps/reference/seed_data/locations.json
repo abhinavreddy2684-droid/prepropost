@@ -1,0 +1,299 @@
+[
+  {
+    "state": "Andhra Pradesh",
+    "cities": [
+      "Visakhapatnam",
+      "Vijayawada",
+      "Tirupati",
+      "Guntur"
+    ]
+  },
+  {
+    "state": "Arunachal Pradesh",
+    "cities": [
+      "Itanagar",
+      "Naharlagun",
+      "Pasighat"
+    ]
+  },
+  {
+    "state": "Assam",
+    "cities": [
+      "Guwahati",
+      "Dibrugarh",
+      "Silchar",
+      "Jorhat"
+    ]
+  },
+  {
+    "state": "Bihar",
+    "cities": [
+      "Patna",
+      "Gaya",
+      "Muzaffarpur",
+      "Bhagalpur"
+    ]
+  },
+  {
+    "state": "Chhattisgarh",
+    "cities": [
+      "Raipur",
+      "Bilaspur",
+      "Durg",
+      "Bhilai"
+    ]
+  },
+  {
+    "state": "Goa",
+    "cities": [
+      "Panaji",
+      "Margao",
+      "Vasco da Gama",
+      "Mapusa"
+    ]
+  },
+  {
+    "state": "Gujarat",
+    "cities": [
+      "Ahmedabad",
+      "Surat",
+      "Vadodara",
+      "Rajkot"
+    ]
+  },
+  {
+    "state": "Haryana",
+    "cities": [
+      "Gurugram",
+      "Faridabad",
+      "Panipat",
+      "Hisar"
+    ]
+  },
+  {
+    "state": "Himachal Pradesh",
+    "cities": [
+      "Shimla",
+      "Dharamshala",
+      "Manali",
+      "Solan"
+    ]
+  },
+  {
+    "state": "Jharkhand",
+    "cities": [
+      "Ranchi",
+      "Jamshedpur",
+      "Dhanbad",
+      "Bokaro"
+    ]
+  },
+  {
+    "state": "Karnataka",
+    "cities": [
+      "Bengaluru",
+      "Mysuru",
+      "Mangaluru",
+      "Hubballi"
+    ]
+  },
+  {
+    "state": "Kerala",
+    "cities": [
+      "Kochi",
+      "Thiruvananthapuram",
+      "Kozhikode",
+      "Thrissur"
+    ]
+  },
+  {
+    "state": "Madhya Pradesh",
+    "cities": [
+      "Bhopal",
+      "Indore",
+      "Jabalpur",
+      "Gwalior"
+    ]
+  },
+  {
+    "state": "Maharashtra",
+    "cities": [
+      "Mumbai",
+      "Pune",
+      "Nagpur",
+      "Nashik"
+    ]
+  },
+  {
+    "state": "Manipur",
+    "cities": [
+      "Imphal",
+      "Churachandpur",
+      "Thoubal"
+    ]
+  },
+  {
+    "state": "Meghalaya",
+    "cities": [
+      "Shillong",
+      "Tura",
+      "Jowai"
+    ]
+  },
+  {
+    "state": "Mizoram",
+    "cities": [
+      "Aizawl",
+      "Lunglei",
+      "Champhai"
+    ]
+  },
+  {
+    "state": "Nagaland",
+    "cities": [
+      "Kohima",
+      "Dimapur",
+      "Mokokchung"
+    ]
+  },
+  {
+    "state": "Odisha",
+    "cities": [
+      "Bhubaneswar",
+      "Cuttack",
+      "Rourkela",
+      "Puri"
+    ]
+  },
+  {
+    "state": "Punjab",
+    "cities": [
+      "Chandigarh",
+      "Ludhiana",
+      "Amritsar",
+      "Jalandhar"
+    ]
+  },
+  {
+    "state": "Rajasthan",
+    "cities": [
+      "Jaipur",
+      "Jodhpur",
+      "Udaipur",
+      "Kota"
+    ]
+  },
+  {
+    "state": "Sikkim",
+    "cities": [
+      "Gangtok",
+      "Namchi",
+      "Gyalshing"
+    ]
+  },
+  {
+    "state": "Tamil Nadu",
+    "cities": [
+      "Chennai",
+      "Coimbatore",
+      "Madurai",
+      "Tiruchirappalli"
+    ]
+  },
+  {
+    "state": "Telangana",
+    "cities": [
+      "Hyderabad",
+      "Warangal",
+      "Nizamabad",
+      "Karimnagar"
+    ]
+  },
+  {
+    "state": "Tripura",
+    "cities": [
+      "Agartala",
+      "Udaipur",
+      "Dharmanagar"
+    ]
+  },
+  {
+    "state": "Uttar Pradesh",
+    "cities": [
+      "Lucknow",
+      "Noida",
+      "Kanpur",
+      "Varanasi"
+    ]
+  },
+  {
+    "state": "Uttarakhand",
+    "cities": [
+      "Dehradun",
+      "Haridwar",
+      "Nainital"
+    ]
+  },
+  {
+    "state": "West Bengal",
+    "cities": [
+      "Kolkata",
+      "Siliguri",
+      "Durgapur",
+      "Howrah"
+    ]
+  },
+  {
+    "state": "Andaman and Nicobar Islands",
+    "cities": [
+      "Port Blair"
+    ]
+  },
+  {
+    "state": "Chandigarh",
+    "cities": [
+      "Chandigarh"
+    ]
+  },
+  {
+    "state": "Dadra and Nagar Haveli and Daman and Diu",
+    "cities": [
+      "Daman",
+      "Silvassa"
+    ]
+  },
+  {
+    "state": "Delhi",
+    "cities": [
+      "New Delhi",
+      "Delhi"
+    ]
+  },
+  {
+    "state": "Jammu and Kashmir",
+    "cities": [
+      "Srinagar",
+      "Jammu"
+    ]
+  },
+  {
+    "state": "Ladakh",
+    "cities": [
+      "Leh",
+      "Kargil"
+    ]
+  },
+  {
+    "state": "Lakshadweep",
+    "cities": [
+      "Kavaratti"
+    ]
+  },
+  {
+    "state": "Puducherry",
+    "cities": [
+      "Puducherry",
+      "Karaikal"
+    ]
+  }
+]

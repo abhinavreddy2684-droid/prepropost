@@ -1,0 +1,266 @@
+[
+  {
+    "title": "Direction",
+    "description": "The visionary force shaping narrative, performance, and cinematic execution.",
+    "talent_types": [
+      "Film Directors",
+      "Assistant Directors",
+      "Commercial Directors",
+      "Music Video Directors"
+    ],
+    "sort_order": 1
+  },
+  {
+    "title": "Screenplay",
+    "description": "Crafting cinematic narratives, pacing, structure, and emotional storytelling.",
+    "talent_types": [
+      "Screenwriters",
+      "Script Writers",
+      "Story Writers",
+      "Screenplay Consultants"
+    ],
+    "sort_order": 2
+  },
+  {
+    "title": "Cinematography",
+    "description": "Painting emotion with light, movement, composition, and cinematic framing.",
+    "talent_types": [
+      "Directors of Photography",
+      "Cinematographers",
+      "Camera Operators",
+      "Steadicam Operators"
+    ],
+    "sort_order": 3
+  },
+  {
+    "title": "Music Direction",
+    "description": "Building emotional identity through cinematic composition and sound.",
+    "talent_types": [
+      "Music Directors",
+      "Film Composers",
+      "Background Score Composers",
+      "Music Producers"
+    ],
+    "sort_order": 4
+  },
+  {
+    "title": "Editing",
+    "description": "Shaping rhythm, pacing, emotion, and cinematic continuity.",
+    "talent_types": [
+      "Film Editors",
+      "Trailer Editors",
+      "Assistant Editors",
+      "Post-Production Editors"
+    ],
+    "sort_order": 5
+  },
+  {
+    "title": "Art Direction",
+    "description": "Designing cinematic spaces, aesthetics, environments, and visual atmosphere.",
+    "talent_types": [
+      "Art Directors",
+      "Set Designers",
+      "Set Decorators",
+      "Visual Concept Artists"
+    ],
+    "sort_order": 6
+  },
+  {
+    "title": "Action & Stunts",
+    "description": "Crafting dynamic action choreography and cinematic stunt execution.",
+    "talent_types": [
+      "Stunt Performers",
+      "Stunt Coordinators",
+      "Action Choreographers",
+      "Fight Choreographers"
+    ],
+    "sort_order": 7
+  },
+  {
+    "title": "Dance Choreography",
+    "description": "Creating movement, rhythm, and expressive cinematic dance storytelling.",
+    "talent_types": [
+      "Dance Choreographers",
+      "Dance Directors",
+      "Movement Directors",
+      "Dance Performers"
+    ],
+    "sort_order": 8
+  },
+  {
+    "title": "Makeup & Hair",
+    "description": "Transforming actors through styling, prosthetics, and visual character creation.",
+    "talent_types": [
+      "Makeup Artists",
+      "Hair Stylists",
+      "Prosthetic Makeup Artists",
+      "Character Makeup Artists"
+    ],
+    "sort_order": 9
+  },
+  {
+    "title": "Costume Design",
+    "description": "Designing wardrobe aesthetics that define character and cinematic identity.",
+    "talent_types": [
+      "Costume Designers",
+      "Wardrobe Stylists",
+      "Costume Supervisors",
+      "Costume Assistants"
+    ],
+    "sort_order": 10
+  },
+  {
+    "title": "Sound Design",
+    "description": "Building immersive sonic worlds through effects, ambience, and mixing.",
+    "talent_types": [
+      "Sound Designers",
+      "Foley Artists",
+      "Re-Recording Mixers",
+      "Location Sound Recordists"
+    ],
+    "sort_order": 11
+  },
+  {
+    "title": "VFX & CGI",
+    "description": "Enhancing cinematic storytelling through advanced visual effects and CGI.",
+    "talent_types": [
+      "VFX Artists",
+      "CGI Artists",
+      "Compositors",
+      "3D Artists"
+    ],
+    "sort_order": 12
+  },
+  {
+    "title": "Dubbing",
+    "description": "Professional voice replacement and cinematic dialogue synchronization.",
+    "talent_types": [
+      "Dubbing Artists",
+      "Voice Actors",
+      "ADR Artists",
+      "Dubbing Directors"
+    ],
+    "sort_order": 13
+  },
+  {
+    "title": "Playback Singing",
+    "description": "Delivering cinematic vocal performances for songs and soundtracks.",
+    "talent_types": [
+      "Playback Singers",
+      "Session Singers",
+      "Vocalists",
+      "Backing Vocalists"
+    ],
+    "sort_order": 14
+  },
+  {
+    "title": "Lyric Writing",
+    "description": "Crafting poetic cinematic lyrics that elevate storytelling through music.",
+    "talent_types": [
+      "Lyricists",
+      "Songwriters",
+      "Poets",
+      "Music Writers"
+    ],
+    "sort_order": 15
+  },
+  {
+    "title": "Story Development",
+    "description": "Developing concepts, themes, and cinematic narrative foundations.",
+    "talent_types": [
+      "Story Developers",
+      "Story Writers",
+      "Creative Consultants",
+      "Narrative Designers"
+    ],
+    "sort_order": 16
+  },
+  {
+    "title": "Dialogue Writing",
+    "description": "Writing emotionally resonant and character-driven cinematic dialogue.",
+    "talent_types": [
+      "Dialogue Writers",
+      "Screenwriters",
+      "Script Consultants",
+      "Dialogue Consultants"
+    ],
+    "sort_order": 17
+  },
+  {
+    "title": "Production Design",
+    "description": "Overseeing the complete visual language and cinematic world-building.",
+    "talent_types": [
+      "Production Designers",
+      "Art Department Heads",
+      "Visual Designers",
+      "Set Designers"
+    ],
+    "sort_order": 18
+  },
+  {
+    "title": "PR & Publicity",
+    "description": "Building audience engagement, marketing campaigns, and cinematic branding.",
+    "talent_types": [
+      "PR Professionals",
+      "Publicists",
+      "Film Marketers",
+      "Entertainment Communications Specialists"
+    ],
+    "sort_order": 19
+  },
+  {
+    "title": "Still Photography",
+    "description": "Capturing iconic promotional and behind-the-scenes cinematic imagery.",
+    "talent_types": [
+      "Film Photographers",
+      "Still Photographers",
+      "Unit Photographers",
+      "Behind-the-Scenes Photographers"
+    ],
+    "sort_order": 20
+  },
+  {
+    "title": "Casting",
+    "description": "Discovering and selecting talent that brings cinematic characters to life.",
+    "talent_types": [
+      "Casting Directors",
+      "Casting Associates",
+      "Talent Scouts",
+      "Casting Assistants"
+    ],
+    "sort_order": 21
+  },
+  {
+    "title": "Subtitling",
+    "description": "Localizing cinematic storytelling for multilingual global audiences.",
+    "talent_types": [
+      "Subtitle Editors",
+      "Subtitle Translators",
+      "Localization Specialists",
+      "Captioning Professionals"
+    ],
+    "sort_order": 22
+  },
+  {
+    "title": "Color Grading (DI)",
+    "description": "Crafting cinematic tone, mood, and visual consistency through grading.",
+    "talent_types": [
+      "Colorists",
+      "DI Colorists",
+      "Color Grading Artists",
+      "Online Editors"
+    ],
+    "sort_order": 23
+  },
+  {
+    "title": "Production Management",
+    "description": "Managing schedules, logistics, budgeting, and execution across production.",
+    "talent_types": [
+      "Production Managers",
+      "Line Producers",
+      "Production Coordinators",
+      "Production Supervisors"
+    ],
+    "sort_order": 24
+  }
+]
