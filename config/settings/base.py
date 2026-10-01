@@ -24,7 +24,9 @@ DJANGO_APPS = [
     "django.contrib.postgres",
 ]
 THIRD_PARTY_APPS = ["rest_framework", "drf_spectacular"]
-LOCAL_APPS = []
+LOCAL_APPS = [
+    "apps.common",
+]
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
@@ -89,6 +91,8 @@ else:
 # --- DRF -------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "apps.common.api.exception_handler",
+    "DEFAULT_PAGINATION_CLASS": "apps.common.api.DefaultCursorPagination",
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
