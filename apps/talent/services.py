@@ -41,6 +41,7 @@ def create_talent_profile(
         raise Conflict("This account already has a talent profile.")
     profile = TalentProfile(user=user, full_name=full_name, professional_name=professional_name)
     _apply_fields(profile, extra)
+    _validate_profile(profile)
     profile.save()
     return profile
 
@@ -48,8 +49,34 @@ def create_talent_profile(
 @transaction.atomic
 def update_talent_profile(*, talent: TalentProfile, data: Mapping) -> TalentProfile:
     _apply_fields(talent, data)
+    _validate_profile(talent)
     talent.save()
     return talent
+
+
+_MAX_NAME_LENGTH = 150  # mirrors the column size
+_MAX_YEARS_EXPERIENCE = 80  # mirrors talent_years_experience_sane
+
+
+def _validate_profile(talent: TalentProfile) -> None:
+    """Reject what the database would otherwise reject as a 500 (or silently accept)."""
+    for field in ("full_name", "professional_name"):
+        value = (getattr(talent, field) or "").strip()
+        if not value:
+            raise ValidationFailed(f"{field} is required.", details={"field": field})
+        if len(value) > _MAX_NAME_LENGTH:
+            raise ValidationFailed(
+                f"{field} must be at most {_MAX_NAME_LENGTH} characters.", details={"field": field}
+            )
+        setattr(talent, field, value)
+    if talent.gender and talent.gender not in TalentProfile.Gender.values:
+        raise ValidationFailed(f"Unknown gender '{talent.gender}'.", details={"field": "gender"})
+    years = talent.years_experience
+    if years is not None and not 0 <= years <= _MAX_YEARS_EXPERIENCE:
+        raise ValidationFailed(
+            f"years_experience must be between 0 and {_MAX_YEARS_EXPERIENCE}.",
+            details={"field": "years_experience"},
+        )
 
 
 def _apply_fields(talent: TalentProfile, data: Mapping) -> None:
