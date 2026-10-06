@@ -20,6 +20,12 @@ class ValidationFailed(DomainError):
     code = "validation_failed"
 
 
+class Unauthenticated(DomainError):
+    """Credentials were missing or wrong. Mapped to HTTP 401."""
+
+    code = "authentication_failed"
+
+
 class NotFound(DomainError):
     code = "not_found"
 

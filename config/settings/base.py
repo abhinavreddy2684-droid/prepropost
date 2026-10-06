@@ -137,6 +137,16 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
 }
 
+# --- Email -----------------------------------------------------------------
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=25)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Pre Pro Post <no-reply@prepropost.local>")
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000").rstrip("/")
+
 # --- Celery ----------------------------------------------------------------
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_TASK_ALWAYS_EAGER = False
@@ -154,6 +164,7 @@ REFERENCE_CACHE_TTL_SECONDS = 60 * 60
 BOOTSTRAP_CLIENT_MAX_AGE_SECONDS = 300
 AVAILABILITY_WINDOW_DAYS = 90
 AVAILABILITY_CARD_LOOKAHEAD_DAYS = 7
+EMAIL_VERIFICATION_TTL_HOURS = 48
 OFFER_DEFAULT_TTL_DAYS = 7
 PLATFORM_COMMISSION_BPS = 500  # 5%; snapshotted per engagement at funding time (M5)
 
