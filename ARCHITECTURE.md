@@ -12,7 +12,7 @@ nothing reaches into another app's tables or internals.
 | `services.py` | Write-side use cases. Atomic, validated, authoritative. | models, selectors, other apps' **selectors/services** |
 | `events.py` | Public domain events (plain ids only). | - |
 | `subscribers.py` | Reactions to other apps' events. | own services |
-| `views/serializers` (M1.1+) | HTTP translation only. Calls services/selectors. | services, selectors |
+| `views/serializers` | HTTP translation only. Calls services/selectors. | services, selectors |
 | `admin.py` | Staff tooling; mutates via services where state matters. | services |
 
 Rule of thumb: **views never contain business rules; services never know about HTTP.**
@@ -59,6 +59,20 @@ Services give friendly errors; constraints guarantee correctness under concurren
 | New offer transition | One row in `hiring/state_machine.py` + a service + an event. |
 | New reaction to offers | New `@subscribe(...)` handler in any app. |
 
+## Auth and roles
+
+* JWT via simplejwt: short-lived access token, rotating refresh token, old refresh tokens
+  blacklisted (`token_blacklist`; expired rows are pruned daily by a beat task).
+* Emails are lowercased in `accounts.services`, not constrained in the DB. Create users through
+  `User.objects.create_user` or `register_user`, never `User(...)`.
+* Email verification uses a signed, expiring token bound to the current address (no table). The
+  `EmailVerificationRequested` event triggers a Celery task that sends the mail.
+* Roles are implied by profiles. `talent` and `recruiters` register a predicate with
+  `accounts.roles.register_role` in `ready()`, and `/api/me` evaluates them per request. Roles are
+  not in the JWT. Permission classes live in the app that owns the rule (`IsTalent`,
+  `IsRecruiter`, `IsVerifiedRecruiter`, `IsEmailVerified`).
+* Services raise `Unauthenticated` for bad credentials; the API maps it to 401.
+
 ## Configuration
 
 Environment via `django-environ`; settings split `base/local/test/production`.
@@ -69,6 +83,9 @@ Tunables (`AVAILABILITY_WINDOW_DAYS`, `OFFER_DEFAULT_TTL_DAYS`, cache TTLs,
 
 * Event bus is in-process; move `_dispatch` onto Celery when volume or reliability needs it
   (add an outbox table if you need guaranteed delivery).
-* No auth/serializer layer yet (milestone M1.1). `ATOMIC_REQUESTS` is on; domain errors
-  are returned as responses, so services must remain internally atomic (they are).
+* `ATOMIC_REQUESTS` is on; domain errors are returned as responses (not raised through the
+  request), so a failed request still commits earlier writes. Services must remain internally
+  atomic (they are).
+* Login has IP-scoped throttling only; there is no per-account lockout yet.
+* Registering with a taken email returns 409, which reveals that the account exists.
 * Engagement, ledger, payouts and disputes (M5/M6) are not part of this drop.
