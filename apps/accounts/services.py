@@ -1,5 +1,6 @@
 """Account write use cases: registration, login and email verification."""
 
+import contextlib
 from datetime import datetime
 
 from django.conf import settings
@@ -11,6 +12,8 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.common.events import publish
 from apps.common.exceptions import Conflict, Unauthenticated, ValidationFailed
@@ -59,6 +62,18 @@ def login_user(*, email: str, password: str) -> User:
         raise Unauthenticated("Invalid email or password.")
     update_last_login(None, user)
     return user
+
+
+def issue_tokens(user: User) -> dict[str, str]:
+    refresh = RefreshToken.for_user(user)
+    return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
+@transaction.atomic
+def logout(*, refresh_token: str) -> None:
+    """Revoke a refresh token. Idempotent: an invalid or already revoked token is a no-op."""
+    with contextlib.suppress(TokenError):
+        RefreshToken(refresh_token).blacklist()
 
 
 def build_verification_token(user: User) -> str:
