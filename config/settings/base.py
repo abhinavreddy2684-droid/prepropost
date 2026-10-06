@@ -165,6 +165,9 @@ BOOTSTRAP_CLIENT_MAX_AGE_SECONDS = 300
 AVAILABILITY_WINDOW_DAYS = 90
 AVAILABILITY_CARD_LOOKAHEAD_DAYS = 7
 EMAIL_VERIFICATION_TTL_HOURS = 48
+# Completeness items a talent must have before the profile can be published (see
+# apps.talent.selectors.COMPLETENESS_ITEMS for the full list that feeds the percentage).
+TALENT_REQUIRED_FOR_PUBLISH = ("primary_craft", "city")
 OFFER_DEFAULT_TTL_DAYS = 7
 PLATFORM_COMMISSION_BPS = 500  # 5%; snapshotted per engagement at funding time (M5)
 

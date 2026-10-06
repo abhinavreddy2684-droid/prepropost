@@ -8,7 +8,13 @@ from django.db.models import Count, Exists, OuterRef, Q, QuerySet
 
 from apps.common.dates import years_before
 
-from .models import AvailabilityOverride, AvailabilityStatus, TalentCraft, TalentProfile
+from .models import (
+    AvailabilityOverride,
+    AvailabilityStatus,
+    Experience,
+    TalentCraft,
+    TalentProfile,
+)
 
 
 @dataclass(frozen=True)
@@ -101,3 +107,50 @@ def get_talent_profile(user) -> TalentProfile | None:
 
 def has_talent_profile(user) -> bool:
     return get_talent_profile(user) is not None
+
+
+# Every item is worth the same; a talent is "complete" at 100%. Which of these block publishing
+# is a setting (TALENT_REQUIRED_FOR_PUBLISH), so product can tune it without a code change.
+COMPLETENESS_ITEMS = (
+    "primary_craft",
+    "city",
+    "avatar",
+    "bio",
+    "years_experience",
+    "genres",
+    "experience",
+    "date_of_birth",
+    "gender",
+)
+
+
+@dataclass(frozen=True)
+class Completeness:
+    percent: int
+    missing: tuple[str, ...]
+    blocking: tuple[str, ...]  # missing items that prevent publishing
+
+    @property
+    def can_publish(self) -> bool:
+        return not self.blocking
+
+
+def profile_completeness(talent: TalentProfile) -> Completeness:
+    present = {
+        "primary_craft": TalentCraft.objects.filter(talent=talent, is_primary=True).exists(),
+        "city": talent.city_id is not None,
+        "avatar": talent.avatar_id is not None,
+        "bio": bool(talent.bio.strip()),
+        "years_experience": talent.years_experience is not None,
+        "genres": bool(talent.genres),
+        "experience": Experience.objects.filter(talent=talent).exists(),
+        "date_of_birth": talent.date_of_birth is not None,
+        "gender": bool(talent.gender),
+    }
+    missing = tuple(item for item in COMPLETENESS_ITEMS if not present[item])
+    required = set(settings.TALENT_REQUIRED_FOR_PUBLISH)
+    return Completeness(
+        percent=round(100 * (len(COMPLETENESS_ITEMS) - len(missing)) / len(COMPLETENESS_ITEMS)),
+        missing=missing,
+        blocking=tuple(item for item in missing if item in required),
+    )
