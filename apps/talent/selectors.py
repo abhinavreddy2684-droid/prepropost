@@ -154,3 +154,15 @@ def profile_completeness(talent: TalentProfile) -> Completeness:
         missing=missing,
         blocking=tuple(item for item in missing if item in required),
     )
+
+
+def list_experiences(talent: TalentProfile):
+    return (
+        Experience.objects.filter(talent=talent)
+        .select_related("craft")
+        .order_by("-start_year", "-created_at")
+    )
+
+
+def get_experience(talent: TalentProfile, experience_id) -> Experience | None:
+    return Experience.objects.filter(talent=talent, pk=experience_id).first()

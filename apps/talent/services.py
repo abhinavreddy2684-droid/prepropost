@@ -7,13 +7,19 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from apps.common.exceptions import Conflict, ValidationFailed
+from apps.common.exceptions import Conflict, NotFound, ValidationFailed
 from apps.common.text import normalize_tags
 from apps.media_library import selectors as media_selectors
 from apps.reference.models import Craft
 
 from . import selectors
-from .models import AvailabilityOverride, AvailabilityStatus, TalentCraft, TalentProfile
+from .models import (
+    AvailabilityOverride,
+    AvailabilityStatus,
+    Experience,
+    TalentCraft,
+    TalentProfile,
+)
 
 _EDITABLE_FIELDS = {
     "full_name",
@@ -160,3 +166,53 @@ def set_published(*, talent: TalentProfile, published: bool) -> TalentProfile:
     talent.is_published = published
     talent.save(update_fields=["is_published", "updated_at"])
     return talent
+
+
+_EXPERIENCE_FIELDS = {"title", "company", "start_year", "end_year", "description", "craft"}
+_YEAR_RANGE = (1900, 2100)  # mirrors the DB check constraint
+
+
+def _apply_experience(talent: TalentProfile, experience: Experience, data: Mapping) -> None:
+    unknown = set(data) - _EXPERIENCE_FIELDS
+    if unknown:
+        raise ValidationFailed(f"Fields not editable: {', '.join(sorted(unknown))}.")
+    for name, value in data.items():
+        setattr(experience, name, value)
+
+    if not (experience.title or "").strip():
+        raise ValidationFailed("Title is required.")
+    start, end = experience.start_year, experience.end_year
+    low, high = _YEAR_RANGE
+    if start is None or not low <= start <= high:
+        raise ValidationFailed(f"Start year must be between {low} and {high}.")
+    if end is not None and not start <= end <= high:
+        raise ValidationFailed("End year must be between the start year and the year 2100.")
+    if experience.craft_id and not selectors.has_craft(talent.pk, experience.craft_id):
+        raise ValidationFailed("Pick one of your own crafts.", code="craft_not_on_profile")
+
+
+@transaction.atomic
+def add_experience(*, talent: TalentProfile, **fields) -> Experience:
+    experience = Experience(talent=talent)
+    _apply_experience(talent, experience, fields)
+    experience.save()
+    return experience
+
+
+@transaction.atomic
+def update_experience(*, talent: TalentProfile, experience_id, data: Mapping) -> Experience:
+    experience = (
+        Experience.objects.select_for_update().filter(talent=talent, pk=experience_id).first()
+    )
+    if experience is None:
+        raise NotFound("Experience not found.")
+    _apply_experience(talent, experience, data)
+    experience.save()
+    return experience
+
+
+@transaction.atomic
+def delete_experience(*, talent: TalentProfile, experience_id) -> None:
+    deleted, _ = Experience.objects.filter(talent=talent, pk=experience_id).delete()
+    if not deleted:
+        raise NotFound("Experience not found.")
