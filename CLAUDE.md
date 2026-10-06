@@ -98,7 +98,7 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
 - To assert event side effects use the `django_capture_on_commit_callbacks(execute=True)` fixture.
 - Time-dependent services accept `today`/`now` parameters. Prefer passing them over freezing time.
 - Tests inside one app must not depend on enums or data registered by apps that come later in the
-  dependency order. Use `isolated_registry`-style fixtures.
+  dependency order. Use the shared `isolated_registry` fixture (root `conftest.py`).
 - Do not edit existing migrations once pushed. Add a new one. Review generated migrations before
   committing.
 
@@ -123,8 +123,9 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
 
 - Done (`v0.1.0`): foundation, data model, reference data and bootstrap endpoint, profiles,
   search selector, offer lifecycle, notifications, analytics events.
-- **M1.1 next:** JWT auth (simplejwt, rotating refresh), email verification hooks, talent
+- Done (M1.1): JWT auth (simplejwt, rotating blacklisted refresh), email verification, talent
   onboarding + profile + experience + availability endpoints, OpenAPI. Phone OTP deferred.
+  Recruiter profile endpoints are not built yet.
 - M2: media upload via pre-signed URLs and background processing. M3: search endpoints and
   ranking. M4: offer and project endpoints plus an offers inbox. M5: engagement, escrow and ledger
   (double-entry, idempotent, webhook-driven). M6: payouts, KYC, disputes, admin tooling.

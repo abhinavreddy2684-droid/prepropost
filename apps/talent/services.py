@@ -7,11 +7,19 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from apps.common.exceptions import Conflict, ValidationFailed
+from apps.common.exceptions import Conflict, NotFound, ValidationFailed
 from apps.common.text import normalize_tags
+from apps.media_library import selectors as media_selectors
 from apps.reference.models import Craft
 
-from .models import AvailabilityOverride, AvailabilityStatus, TalentCraft, TalentProfile
+from . import selectors
+from .models import (
+    AvailabilityOverride,
+    AvailabilityStatus,
+    Experience,
+    TalentCraft,
+    TalentProfile,
+)
 
 _EDITABLE_FIELDS = {
     "full_name",
@@ -33,6 +41,7 @@ def create_talent_profile(
         raise Conflict("This account already has a talent profile.")
     profile = TalentProfile(user=user, full_name=full_name, professional_name=professional_name)
     _apply_fields(profile, extra)
+    _validate_profile(profile)
     profile.save()
     return profile
 
@@ -40,8 +49,34 @@ def create_talent_profile(
 @transaction.atomic
 def update_talent_profile(*, talent: TalentProfile, data: Mapping) -> TalentProfile:
     _apply_fields(talent, data)
+    _validate_profile(talent)
     talent.save()
     return talent
+
+
+_MAX_NAME_LENGTH = 150  # mirrors the column size
+_MAX_YEARS_EXPERIENCE = 80  # mirrors talent_years_experience_sane
+
+
+def _validate_profile(talent: TalentProfile) -> None:
+    """Reject what the database would otherwise reject as a 500 (or silently accept)."""
+    for field in ("full_name", "professional_name"):
+        value = (getattr(talent, field) or "").strip()
+        if not value:
+            raise ValidationFailed(f"{field} is required.", details={"field": field})
+        if len(value) > _MAX_NAME_LENGTH:
+            raise ValidationFailed(
+                f"{field} must be at most {_MAX_NAME_LENGTH} characters.", details={"field": field}
+            )
+        setattr(talent, field, value)
+    if talent.gender and talent.gender not in TalentProfile.Gender.values:
+        raise ValidationFailed(f"Unknown gender '{talent.gender}'.", details={"field": "gender"})
+    years = talent.years_experience
+    if years is not None and not 0 <= years <= _MAX_YEARS_EXPERIENCE:
+        raise ValidationFailed(
+            f"years_experience must be between 0 and {_MAX_YEARS_EXPERIENCE}.",
+            details={"field": "years_experience"},
+        )
 
 
 def _apply_fields(talent: TalentProfile, data: Mapping) -> None:
@@ -105,3 +140,106 @@ def set_availability(
             AvailabilityOverride.objects.update_or_create(
                 talent=talent, date=day, defaults={"status": status}
             )
+
+
+@transaction.atomic
+def set_avatar(*, talent: TalentProfile, media_id=None) -> TalentProfile:
+    """Point the profile photo at one of the user's own READY avatar images (None clears it)."""
+    talent = TalentProfile.objects.select_for_update().get(pk=talent.pk)
+    if media_id is None:
+        talent.avatar = None
+    else:
+        media = media_selectors.get_ready_avatar(owner_id=talent.user_id, media_id=media_id)
+        if media is None:
+            raise ValidationFailed(
+                "Choose one of your own avatar images that has finished processing.",
+                code="invalid_avatar",
+            )
+        talent.avatar = media
+    talent.save(update_fields=["avatar", "updated_at"])
+    return talent
+
+
+def _require_publishable(talent: TalentProfile) -> None:
+    completeness = selectors.profile_completeness(talent)
+    if not completeness.can_publish:
+        raise ValidationFailed(
+            "Complete the required profile fields first.",
+            code="profile_incomplete",
+            details={"missing": list(completeness.blocking)},
+        )
+
+
+@transaction.atomic
+def complete_onboarding(*, talent: TalentProfile, now=None) -> TalentProfile:
+    """Finish onboarding: needs the required fields; publishes the profile on first completion."""
+    talent = TalentProfile.objects.select_for_update().get(pk=talent.pk)
+    if talent.onboarding_completed_at is None:
+        _require_publishable(talent)
+        talent.onboarding_completed_at = now or timezone.now()
+        talent.is_published = True
+        talent.save(update_fields=["onboarding_completed_at", "is_published", "updated_at"])
+    return talent
+
+
+@transaction.atomic
+def set_published(*, talent: TalentProfile, published: bool) -> TalentProfile:
+    """Hide or show the profile in search. Showing needs onboarding done and required fields."""
+    talent = TalentProfile.objects.select_for_update().get(pk=talent.pk)
+    if published and not talent.is_published:
+        if talent.onboarding_completed_at is None:
+            raise ValidationFailed("Finish onboarding first.", code="onboarding_incomplete")
+        _require_publishable(talent)
+    talent.is_published = published
+    talent.save(update_fields=["is_published", "updated_at"])
+    return talent
+
+
+_EXPERIENCE_FIELDS = {"title", "company", "start_year", "end_year", "description", "craft"}
+_YEAR_RANGE = (1900, 2100)  # mirrors the DB check constraint
+
+
+def _apply_experience(talent: TalentProfile, experience: Experience, data: Mapping) -> None:
+    unknown = set(data) - _EXPERIENCE_FIELDS
+    if unknown:
+        raise ValidationFailed(f"Fields not editable: {', '.join(sorted(unknown))}.")
+    for name, value in data.items():
+        setattr(experience, name, value)
+
+    if not (experience.title or "").strip():
+        raise ValidationFailed("Title is required.")
+    start, end = experience.start_year, experience.end_year
+    low, high = _YEAR_RANGE
+    if start is None or not low <= start <= high:
+        raise ValidationFailed(f"Start year must be between {low} and {high}.")
+    if end is not None and not start <= end <= high:
+        raise ValidationFailed("End year must be between the start year and the year 2100.")
+    if experience.craft_id and not selectors.has_craft(talent.pk, experience.craft_id):
+        raise ValidationFailed("Pick one of your own crafts.", code="craft_not_on_profile")
+
+
+@transaction.atomic
+def add_experience(*, talent: TalentProfile, **fields) -> Experience:
+    experience = Experience(talent=talent)
+    _apply_experience(talent, experience, fields)
+    experience.save()
+    return experience
+
+
+@transaction.atomic
+def update_experience(*, talent: TalentProfile, experience_id, data: Mapping) -> Experience:
+    experience = (
+        Experience.objects.select_for_update().filter(talent=talent, pk=experience_id).first()
+    )
+    if experience is None:
+        raise NotFound("Experience not found.")
+    _apply_experience(talent, experience, data)
+    experience.save()
+    return experience
+
+
+@transaction.atomic
+def delete_experience(*, talent: TalentProfile, experience_id) -> None:
+    deleted, _ = Experience.objects.filter(talent=talent, pk=experience_id).delete()
+    if not deleted:
+        raise NotFound("Experience not found.")

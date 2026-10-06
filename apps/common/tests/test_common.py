@@ -10,6 +10,7 @@ from apps.common.exceptions import (
     InvalidTransition,
     NotFound,
     PermissionDenied,
+    Unauthenticated,
     ValidationFailed,
 )
 from apps.common.state_machine import StateMachine
@@ -95,6 +96,7 @@ class TestExceptionHandler:
         ("error", "status"),
         [
             (ValidationFailed("x"), 400),
+            (Unauthenticated("x"), 401),
             (PermissionDenied("x"), 403),
             (NotFound("x"), 404),
             (Conflict("x"), 409),
@@ -105,3 +107,7 @@ class TestExceptionHandler:
         response = exception_handler(error, {})
         assert response.status_code == status
         assert set(response.data["error"]) == {"code", "message", "details"}
+
+    def test_unauthenticated_advertises_the_bearer_scheme(self):
+        response = exception_handler(Unauthenticated("x"), {})
+        assert response["WWW-Authenticate"] == "Bearer"

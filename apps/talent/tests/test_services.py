@@ -40,6 +40,38 @@ class TestProfile:
             services.update_talent_profile(talent=talent, data={"date_of_birth": date(2999, 1, 1)})
 
 
+class TestProfileValidation:
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {"gender": "robot"},
+            {"years_experience": 81},
+            {"years_experience": -1},
+            {"full_name": "   "},
+            {"professional_name": ""},
+            {"professional_name": "x" * 151},
+        ],
+    )
+    def test_update_rejects_values_the_database_would_choke_on(self, data):
+        talent = TalentProfileFactory()
+        with pytest.raises(ValidationFailed):
+            services.update_talent_profile(talent=talent, data=data)
+
+    def test_update_accepts_boundaries_and_trims_names(self):
+        talent = TalentProfileFactory()
+        services.update_talent_profile(
+            talent=talent,
+            data={"years_experience": 80, "gender": "", "professional_name": "  New Name "},
+        )
+        talent.refresh_from_db()
+        assert (talent.years_experience, talent.professional_name) == (80, "New Name")
+
+    def test_create_validates_too(self, django_user_model):
+        user = django_user_model.objects.create_user("v@example.com", "x")
+        with pytest.raises(ValidationFailed):
+            services.create_talent_profile(user=user, full_name="  ", professional_name="AB")
+
+
 class TestCrafts:
     def test_sets_one_primary_and_supporting(self):
         talent, a, b, c = TalentProfileFactory(), CraftFactory(), CraftFactory(), CraftFactory()
