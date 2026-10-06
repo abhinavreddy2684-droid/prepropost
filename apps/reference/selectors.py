@@ -1,6 +1,6 @@
 """Read-side queries. No side effects, no caching decisions."""
 
-from .models import Craft, State
+from .models import City, Craft, State
 
 
 def active_crafts():
@@ -42,3 +42,12 @@ def serialize_locations() -> list[dict]:
         }
         for state in active_states()
     ]
+
+
+def get_active_city(city_id) -> City | None:
+    return City.objects.filter(pk=city_id, is_active=True, state__is_active=True).first()
+
+
+def crafts_by_slug(slugs) -> dict[str, Craft]:
+    """Crafts matching the given slugs (active or not), keyed by slug."""
+    return {craft.slug: craft for craft in Craft.objects.filter(slug__in=list(slugs))}

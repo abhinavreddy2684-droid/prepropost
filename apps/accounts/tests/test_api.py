@@ -18,19 +18,6 @@ def client():
 
 
 @pytest.fixture
-def auth_client():
-    """Returns (client, user) with a valid access token attached."""
-
-    def make(user=None):
-        user = user or UserFactory()
-        api = APIClient()
-        api.credentials(HTTP_AUTHORIZATION=f"Bearer {services.issue_tokens(user)['access']}")
-        return api, user
-
-    return make
-
-
-@pytest.fixture
 def isolated_roles():
     saved = dict(roles._roles)
     yield roles

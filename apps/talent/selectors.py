@@ -166,3 +166,23 @@ def list_experiences(talent: TalentProfile):
 
 def get_experience(talent: TalentProfile, experience_id) -> Experience | None:
     return Experience.objects.filter(talent=talent, pk=experience_id).first()
+
+
+def _with_display_relations(qs):
+    return qs.select_related("city__state").prefetch_related(
+        "talent_crafts__craft", "experiences__craft"
+    )
+
+
+def load_profile(talent_id) -> TalentProfile:
+    """A profile with everything the serializers touch, fetched in a fixed number of queries."""
+    return _with_display_relations(TalentProfile.objects).get(pk=talent_id)
+
+
+def get_public_talent(talent_id) -> TalentProfile | None:
+    """Only published profiles are visible to visitors."""
+    return (
+        _with_display_relations(TalentProfile.objects.filter(is_published=True))
+        .filter(pk=talent_id)
+        .first()
+    )
