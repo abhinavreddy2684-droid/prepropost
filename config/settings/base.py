@@ -1,5 +1,6 @@
 """Settings shared by every environment. Environment-specific files only override."""
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -23,7 +24,11 @@ DJANGO_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.postgres",
 ]
-THIRD_PARTY_APPS = ["rest_framework", "drf_spectacular"]
+THIRD_PARTY_APPS = [
+    "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",
+]
 LOCAL_APPS = [
     "apps.common",
     "apps.accounts",
@@ -100,6 +105,8 @@ else:
 # --- DRF -------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "EXCEPTION_HANDLER": "apps.common.api.exception_handler",
     "DEFAULT_PAGINATION_CLASS": "apps.common.api.DefaultCursorPagination",
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
@@ -107,7 +114,22 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "120/min", "user": "600/min"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "120/min",
+        "user": "600/min",
+        # Scoped rates for credential endpoints (applied per view with ScopedRateThrottle).
+        "auth_login": "10/min",
+        "auth_register": "5/min",
+        "auth_email_resend": "3/min",
+    },
+}
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=15)),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=14)),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
 }
 SPECTACULAR_SETTINGS = {
     "TITLE": "Pre Pro Post API",
@@ -121,6 +143,10 @@ CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TASK_ACKS_LATE = True
 CELERY_BEAT_SCHEDULE = {
     "expire-due-offers": {"task": "apps.hiring.tasks.expire_due_offers", "schedule": 300.0},
+    "flush-expired-tokens": {
+        "task": "apps.accounts.tasks.flush_expired_tokens",
+        "schedule": 24 * 60 * 60.0,
+    },
 }
 
 # --- Domain configuration (tunable without code changes) -------------------
