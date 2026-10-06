@@ -91,3 +91,13 @@ def availability_overrides_between(talent_id, start: date, end: date):
 
 def has_craft(talent_id, craft_id) -> bool:
     return TalentCraft.objects.filter(talent_id=talent_id, craft_id=craft_id).exists()
+
+
+def get_talent_profile(user) -> TalentProfile | None:
+    if not getattr(user, "is_authenticated", False):
+        return None
+    return TalentProfile.objects.filter(user=user).first()
+
+
+def has_talent_profile(user) -> bool:
+    return get_talent_profile(user) is not None
