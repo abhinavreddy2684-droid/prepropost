@@ -24,3 +24,14 @@ def auth_client():
         return api, user
 
     return make
+
+
+@pytest.fixture
+def isolated_registry():
+    """Lets a test register enums without leaking them into other tests."""
+    from apps.reference import registry
+
+    saved = dict(registry._enums)
+    yield registry
+    registry._enums.clear()
+    registry._enums.update(saved)
