@@ -70,7 +70,8 @@ Services give friendly errors; constraints guarantee correctness under concurren
 * Roles are implied by profiles. `talent` and `recruiters` register a predicate with
   `accounts.roles.register_role` in `ready()`, and `/api/me` evaluates them per request. Roles are
   not in the JWT. Permission classes live in the app that owns the rule (`IsTalent`,
-  `IsRecruiter`, `IsVerifiedRecruiter`, `IsEmailVerified`).
+  `IsRecruiter`, `IsVerifiedRecruiter`, `IsEmailVerified`). `common.permissions.IsStaff` guards
+  staff-only endpoints; the services still re-check `is_staff` themselves.
 * Services raise `Unauthenticated` for bad credentials; the API maps it to 401.
 
 ## Configuration
