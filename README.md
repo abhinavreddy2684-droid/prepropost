@@ -25,4 +25,7 @@ set `DATABASE_URL` and `DJANGO_SECRET_KEY`, then `python manage.py migrate && py
 * Talent: `GET/POST/PATCH /api/talent/me`, `PUT /api/talent/me/{crafts,avatar,publish}`,
   `POST /api/talent/me/onboarding/complete`, `/api/talent/me/experiences`,
   `/api/talent/me/availability`, and the public `GET /api/talent/<id>`
+* Recruiter: `GET/POST/PATCH /api/recruiters/me`, `POST /api/recruiters/me/submit` (needs a
+  verified email). Staff review: `GET /api/admin/recruiters?status=pending`,
+  `POST /api/admin/recruiters/<id>/{approve,reject}`; Django admin has matching actions.
 * `GET /api/docs/`: OpenAPI UI

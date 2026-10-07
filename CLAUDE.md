@@ -125,7 +125,10 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
   search selector, offer lifecycle, notifications, analytics events.
 - Done (M1.1): JWT auth (simplejwt, rotating blacklisted refresh), email verification, talent
   onboarding + profile + experience + availability endpoints, OpenAPI. Phone OTP deferred.
-  Recruiter profile endpoints are not built yet.
+- Done (M1.4): recruiter profile endpoints (`/api/recruiters/me`, submit for review), staff review
+  queue with approve/reject endpoints and Django admin actions. Email must be verified to submit;
+  approval is manual. No recruiter events yet (approve/reject notify nobody), and approval has no
+  revoke or re-verification-on-edit.
 - M2: media upload via pre-signed URLs and background processing. M3: search endpoints and
   ranking. M4: offer and project endpoints plus an offers inbox. M5: engagement, escrow and ledger
   (double-entry, idempotent, webhook-driven). M6: payouts, KYC, disputes, admin tooling.
