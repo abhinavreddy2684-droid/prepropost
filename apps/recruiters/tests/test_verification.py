@@ -56,3 +56,48 @@ def test_one_profile_per_account():
     profile = RecruiterProfileFactory()
     with pytest.raises(Conflict):
         services.create_recruiter_profile(user=profile.user, display_name="Again")
+
+
+def test_non_staff_cannot_reject(pending):
+    with pytest.raises(PermissionDenied):
+        services.reject_recruiter(profile=pending, reviewer=UserFactory(), reason="No")
+
+
+def test_rejection_reason_is_capped(staff, pending):
+    with pytest.raises(ValidationFailed):
+        services.reject_recruiter(profile=pending, reviewer=staff, reason="x" * 256)
+
+
+def test_rejection_clears_prior_approval_fields(staff):
+    profile = RecruiterProfileFactory(
+        verification_status=V.PENDING, verified_by=staff, verified_at="2026-01-01T00:00Z"
+    )
+    rejected = services.reject_recruiter(profile=profile, reviewer=staff, reason="Unclear")
+    assert rejected.verified_by is None and rejected.verified_at is None
+
+
+@pytest.mark.parametrize("status", [V.PENDING, V.APPROVED])
+def test_cannot_submit_twice_or_after_approval(status):
+    profile = RecruiterProfileFactory(verification_status=status)
+    with pytest.raises(InvalidTransition):
+        services.submit_for_verification(profile=profile)
+
+
+class TestCreateValidation:
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"display_name": "  "},
+            {"display_name": "x" * 151},
+            {"display_name": "Ok", "company_name": "x" * 201},
+            {"display_name": "Ok", "recruiter_type": "agency"},
+            {"display_name": "Ok", "verification_status": "approved"},
+        ],
+    )
+    def test_rejects_bad_input(self, kwargs):
+        with pytest.raises(ValidationFailed):
+            services.create_recruiter_profile(user=UserFactory(), **kwargs)
+
+    def test_trims_names(self):
+        profile = services.create_recruiter_profile(user=UserFactory(), display_name="  Studio X ")
+        assert profile.display_name == "Studio X"
