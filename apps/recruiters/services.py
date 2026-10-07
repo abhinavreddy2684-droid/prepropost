@@ -45,6 +45,20 @@ def create_recruiter_profile(*, user, display_name: str, **extra) -> RecruiterPr
     return profile
 
 
+@transaction.atomic
+def update_recruiter_profile(*, profile: RecruiterProfile, data: dict) -> RecruiterProfile:
+    """Edit descriptive fields. Verification state is never touched here."""
+    unknown = set(data) - EDITABLE_FIELDS - {"display_name"}
+    if unknown:
+        raise ValidationFailed(f"Fields not editable: {', '.join(sorted(unknown))}.")
+    profile = RecruiterProfile.objects.select_for_update().get(pk=profile.pk)
+    for name, value in data.items():
+        setattr(profile, name, value)
+    _validate_profile(profile)
+    profile.save(update_fields=[*data, "updated_at"])
+    return profile
+
+
 def _transition(profile_id, event: str) -> RecruiterProfile:
     profile = RecruiterProfile.objects.select_for_update().get(pk=profile_id)
     profile.verification_status = VERIFICATION.next_state(profile.verification_status, event)

@@ -4,7 +4,7 @@ from apps.accounts.tests.factories import UserFactory
 from apps.common.exceptions import Conflict, InvalidTransition, PermissionDenied, ValidationFailed
 from apps.recruiters import services
 from apps.recruiters.models import RecruiterProfile
-from apps.recruiters.selectors import is_verified_recruiter
+from apps.recruiters.selectors import get_recruiter_profile, is_verified_recruiter
 
 from .factories import RecruiterProfileFactory
 
@@ -101,3 +101,27 @@ class TestCreateValidation:
     def test_trims_names(self):
         profile = services.create_recruiter_profile(user=UserFactory(), display_name="  Studio X ")
         assert profile.display_name == "Studio X"
+
+
+class TestUpdate:
+    def test_updates_fields_and_keeps_verification(self):
+        profile = RecruiterProfileFactory()
+        updated = services.update_recruiter_profile(
+            profile=profile, data={"display_name": " New ", "website": "https://x.example"}
+        )
+        updated.refresh_from_db()
+        assert updated.display_name == "New" and updated.website == "https://x.example"
+        assert updated.verification_status == V.APPROVED
+
+    @pytest.mark.parametrize(
+        "data", [{"verification_status": "approved"}, {"display_name": ""}, {"recruiter_type": "x"}]
+    )
+    def test_rejects_bad_input(self, data):
+        with pytest.raises(ValidationFailed):
+            services.update_recruiter_profile(profile=RecruiterProfileFactory(), data=data)
+
+
+def test_get_recruiter_profile_selector():
+    profile = RecruiterProfileFactory()
+    assert get_recruiter_profile(profile.user) == profile
+    assert get_recruiter_profile(UserFactory()) is None

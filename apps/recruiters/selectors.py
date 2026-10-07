@@ -14,3 +14,9 @@ def has_recruiter_profile(user) -> bool:
     if not getattr(user, "is_authenticated", False):
         return False
     return RecruiterProfile.objects.filter(user=user).exists()
+
+
+def get_recruiter_profile(user) -> RecruiterProfile | None:
+    if not getattr(user, "is_authenticated", False):
+        return None
+    return RecruiterProfile.objects.select_related("city").filter(user=user).first()
