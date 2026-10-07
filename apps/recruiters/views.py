@@ -1,15 +1,19 @@
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsEmailVerified
+from apps.common.api import DefaultCursorPagination
 from apps.common.exceptions import ValidationFailed
+from apps.common.permissions import IsStaff
 from apps.common.serializers import ErrorEnvelopeSerializer
 from apps.reference import selectors as reference_selectors
 
 from . import selectors, serializers, services
+from .models import RecruiterProfile
 from .permissions import IsRecruiter
 
 _ERROR = OpenApiResponse(ErrorEnvelopeSerializer)
@@ -101,3 +105,97 @@ class RecruiterSubmitView(APIView):
             profile=selectors.get_recruiter_profile(request.user)
         )
         return Response(_out(profile))
+
+
+# --- staff review ----------------------------------------------------------------------------
+
+
+class _ReviewPagination(DefaultCursorPagination):
+    ordering = ("updated_at", "id")
+
+
+class RecruiterReviewListView(ListAPIView):
+    permission_classes = [IsAuthenticated, IsStaff]
+    serializer_class = serializers.RecruiterReviewSerializer
+    pagination_class = _ReviewPagination
+
+    def get_queryset(self):
+        wanted = self.request.query_params.get("status", RecruiterProfile.Verification.PENDING)
+        if wanted not in RecruiterProfile.Verification.values:
+            raise ValidationFailed(f"Unknown status '{wanted}'.", details={"field": "status"})
+        return selectors.list_for_review(status=wanted)
+
+    @extend_schema(
+        summary="Staff: recruiters awaiting review (oldest first)",
+        parameters=[
+            OpenApiParameter(
+                "status",
+                str,
+                enum=RecruiterProfile.Verification.values,
+                description="Verification state to list. Defaults to pending.",
+            )
+        ],
+        responses={
+            200: serializers.RecruiterReviewSerializer(many=True),
+            400: _ERROR,
+            401: _ERROR,
+            403: _ERROR,
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+class _ReviewActionView(APIView):
+    permission_classes = [IsAuthenticated, IsStaff]
+
+
+class RecruiterApproveView(_ReviewActionView):
+    @extend_schema(
+        summary="Staff: approve a pending recruiter",
+        request=None,
+        responses={
+            200: serializers.RecruiterReviewSerializer,
+            401: _ERROR,
+            403: _ERROR,
+            404: _ERROR,
+            409: _ERROR,
+        },
+    )
+    def post(self, request, profile_id):
+        profile = services.approve_recruiter(
+            profile=selectors.get_recruiter_profile_by_id(profile_id), reviewer=request.user
+        )
+        return Response(
+            serializers.RecruiterReviewSerializer(
+                selectors.get_recruiter_profile_by_id(profile.pk)
+            ).data
+        )
+
+
+class RecruiterRejectView(_ReviewActionView):
+    @extend_schema(
+        summary="Staff: reject a pending recruiter with a reason",
+        request=serializers.RejectSerializer,
+        responses={
+            200: serializers.RecruiterReviewSerializer,
+            400: _ERROR,
+            401: _ERROR,
+            403: _ERROR,
+            404: _ERROR,
+            409: _ERROR,
+        },
+    )
+    def post(self, request, profile_id):
+        data = serializers.RejectSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        profile = services.reject_recruiter(
+            profile=selectors.get_recruiter_profile_by_id(profile_id),
+            reviewer=request.user,
+            reason=data.validated_data["reason"],
+        )
+        return Response(
+            serializers.RecruiterReviewSerializer(
+                selectors.get_recruiter_profile_by_id(profile.pk)
+            ).data
+        )

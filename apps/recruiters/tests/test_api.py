@@ -129,3 +129,97 @@ class TestSubmit:
 def test_endpoints_are_documented(client):
     paths = client.get("/api/schema/?format=json").json()["paths"]
     assert {"/api/recruiters/me", "/api/recruiters/me/submit"} <= set(paths)
+
+
+QUEUE = "/api/admin/recruiters"
+
+
+@pytest.fixture
+def staff_client(auth_client):
+    return auth_client(UserFactory(is_staff=True))[0]
+
+
+class TestStaffReview:
+    def test_queue_lists_pending_oldest_first(self, staff_client):
+        first = RecruiterProfileFactory(verification_status=V.PENDING)
+        second = RecruiterProfileFactory(verification_status=V.PENDING)
+        RecruiterProfileFactory(verification_status=V.UNVERIFIED)
+        results = staff_client.get(QUEUE).json()["results"]
+        assert [r["id"] for r in results] == [str(first.id), str(second.id)]
+        assert {"email", "email_verified"} <= set(results[0])
+
+    def test_queue_filters_by_status_and_rejects_unknown(self, staff_client):
+        RecruiterProfileFactory(verification_status=V.APPROVED)
+        assert len(staff_client.get(QUEUE, {"status": "approved"}).json()["results"]) == 1
+        assert staff_client.get(QUEUE, {"status": "nope"}).status_code == 400
+
+    def test_approve(self, staff_client):
+        profile = RecruiterProfileFactory(verification_status=V.PENDING)
+        response = staff_client.post(f"{QUEUE}/{profile.id}/approve")
+        assert response.status_code == 200 and response.json()["verification_status"] == "approved"
+
+    def test_reject_then_recruiter_sees_reason(self, staff_client, auth_client):
+        profile = RecruiterProfileFactory(verification_status=V.PENDING)
+        response = staff_client.post(
+            f"{QUEUE}/{profile.id}/reject", {"reason": "Unclear identity"}, format="json"
+        )
+        assert response.status_code == 200
+        api, _ = auth_client(profile.user)
+        body = api.get(ME).json()
+        assert body["verification_status"] == "rejected"
+        assert body["rejection_reason"] == "Unclear identity"
+
+    def test_reject_needs_a_reason(self, staff_client):
+        profile = RecruiterProfileFactory(verification_status=V.PENDING)
+        for body in ({}, {"reason": "  "}):
+            assert (
+                staff_client.post(f"{QUEUE}/{profile.id}/reject", body, format="json").status_code
+                == 400
+            )
+
+    def test_cannot_approve_unsubmitted(self, staff_client):
+        profile = RecruiterProfileFactory(verification_status=V.UNVERIFIED)
+        assert staff_client.post(f"{QUEUE}/{profile.id}/approve").status_code == 409
+
+    def test_unknown_profile_is_404(self, staff_client):
+        response = staff_client.post(f"{QUEUE}/00000000-0000-0000-0000-000000000000/approve")
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize("action", ["approve", "reject"])
+    def test_non_staff_and_anonymous_are_denied(self, client, recruiter, action):
+        api, profile = recruiter
+        url = f"{QUEUE}/{profile.id}/{action}"
+        assert api.post(url, {"reason": "x"}, format="json").status_code == 403
+        assert client.post(url).status_code == 401
+        profile.refresh_from_db()
+        assert profile.verification_status == V.UNVERIFIED
+
+    def test_non_staff_cannot_read_queue(self, recruiter, client):
+        api, _ = recruiter
+        response = api.get(QUEUE)
+        assert response.status_code == 403 and _code(response) == "staff_required"
+        assert client.get(QUEUE).status_code == 401
+
+
+class TestAdminActions:
+    def test_reject_action_uses_service_and_reason(self, admin_client):
+        profile = RecruiterProfileFactory(verification_status=V.PENDING)
+        admin_client.post(
+            "/admin/recruiters/recruiterprofile/",
+            {
+                "action": "reject_selected",
+                "_selected_action": [str(profile.pk)],
+                "reject_reason": "Not a real company",
+                "index": 0,
+            },
+        )
+        profile.refresh_from_db()
+        assert profile.verification_status == V.REJECTED
+        assert profile.rejection_reason == "Not a real company"
+
+
+def test_review_endpoints_are_documented(client):
+    paths = client.get("/api/schema/?format=json").json()["paths"]
+    assert "/api/admin/recruiters" in paths
+    assert "/api/admin/recruiters/{profile_id}/approve" in paths
+    assert "/api/admin/recruiters/{profile_id}/reject" in paths

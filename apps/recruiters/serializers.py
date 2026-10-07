@@ -52,3 +52,18 @@ class RecruiterCreateSerializer(RecruiterUpdateSerializer):
         super().__init__(*args, **kwargs)
         for name, field in self.fields.items():
             field.required = name == "display_name"
+
+
+class RecruiterReviewSerializer(RecruiterProfileSerializer):
+    """Staff-only view of a profile: adds the account details a reviewer needs."""
+
+    email = serializers.EmailField(source="user.email")
+    email_verified = serializers.BooleanField(source="user.is_email_verified")
+
+    class Meta(RecruiterProfileSerializer.Meta):
+        fields = (*RecruiterProfileSerializer.Meta.fields, "email", "email_verified")
+        read_only_fields = fields
+
+
+class RejectSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=255)
