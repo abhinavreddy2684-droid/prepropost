@@ -31,10 +31,18 @@ def get_recruiter_profile_by_id(profile_id) -> RecruiterProfile:
     return profile
 
 
+def review_ordering(status: str) -> tuple[str, str]:
+    """Pending profiles queue by submission time. Other states have no reliable
+    `submitted_at` (never submitted, or submitted before the field existed)."""
+    if status == RecruiterProfile.Verification.PENDING:
+        return ("submitted_at", "id")
+    return ("updated_at", "id")
+
+
 def list_for_review(*, status: str = RecruiterProfile.Verification.PENDING):
     """Profiles in one verification state, longest-waiting first."""
     return (
         RecruiterProfile.objects.filter(verification_status=status)
         .select_related("city__state", "user")
-        .order_by("updated_at", "id")
+        .order_by(*review_ordering(status))
     )

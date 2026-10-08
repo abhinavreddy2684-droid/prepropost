@@ -148,6 +148,28 @@ class TestStaffReview:
         assert [r["id"] for r in results] == [str(first.id), str(second.id)]
         assert {"email", "email_verified"} <= set(results[0])
 
+    def test_queue_orders_by_submission_not_last_edit(self, staff_client):
+        now = timezone.now()
+        early = RecruiterProfileFactory(
+            verification_status=V.PENDING, submitted_at=now - timezone.timedelta(days=2)
+        )
+        late = RecruiterProfileFactory(
+            verification_status=V.PENDING, submitted_at=now - timezone.timedelta(days=1)
+        )
+        early.save()  # a later edit bumps updated_at but must not cost its place in the queue
+        results = staff_client.get(QUEUE).json()["results"]
+        assert [r["id"] for r in results] == [str(early.id), str(late.id)]
+        assert results[0]["submitted_at"] is not None
+
+    def test_non_pending_lists_page_without_submitted_at(self, staff_client):
+        ids = {str(RecruiterProfileFactory(verification_status=V.UNVERIFIED).id) for _ in range(3)}
+        seen, url = set(), f"{QUEUE}?status=unverified&limit=2"
+        while url:
+            page = staff_client.get(url).json()
+            seen |= {r["id"] for r in page["results"]}
+            url = page["next"]
+        assert seen == ids
+
     def test_queue_filters_by_status_and_rejects_unknown(self, staff_client):
         RecruiterProfileFactory(verification_status=V.APPROVED)
         assert len(staff_client.get(QUEUE, {"status": "approved"}).json()["results"]) == 1

@@ -66,10 +66,13 @@ def _transition(profile_id, event: str) -> RecruiterProfile:
 
 
 @transaction.atomic
-def submit_for_verification(*, profile: RecruiterProfile) -> RecruiterProfile:
+def submit_for_verification(*, profile: RecruiterProfile, now=None) -> RecruiterProfile:
     profile = _transition(profile.pk, "submit")
     profile.rejection_reason = ""
-    profile.save(update_fields=["verification_status", "rejection_reason", "updated_at"])
+    profile.submitted_at = now or timezone.now()
+    profile.save(
+        update_fields=["verification_status", "rejection_reason", "submitted_at", "updated_at"]
+    )
     return profile
 
 

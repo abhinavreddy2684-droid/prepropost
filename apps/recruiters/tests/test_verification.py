@@ -1,4 +1,9 @@
+import importlib
+
 import pytest
+from django.apps import apps as django_apps
+from django.db import IntegrityError, connection, transaction
+from django.utils import timezone
 
 from apps.accounts.tests.factories import UserFactory
 from apps.common.exceptions import Conflict, InvalidTransition, PermissionDenied, ValidationFailed
@@ -125,3 +130,36 @@ def test_get_recruiter_profile_selector():
     profile = RecruiterProfileFactory()
     assert get_recruiter_profile(profile.user) == profile
     assert get_recruiter_profile(UserFactory()) is None
+
+
+class TestSubmittedAt:
+    def test_submit_records_time_and_resubmit_refreshes_it(self, staff):
+        profile = RecruiterProfileFactory(verification_status=V.UNVERIFIED)
+        first = timezone.now() - timezone.timedelta(days=3)
+        profile = services.submit_for_verification(profile=profile, now=first)
+        assert profile.submitted_at == first
+        profile = services.reject_recruiter(profile=profile, reviewer=staff, reason="Unclear")
+        later = timezone.now()
+        profile = services.submit_for_verification(profile=profile, now=later)
+        assert profile.submitted_at == later
+
+    def test_database_rejects_pending_without_submitted_at(self):
+        with pytest.raises(IntegrityError), transaction.atomic():
+            RecruiterProfileFactory(verification_status=V.PENDING, submitted_at=None)
+
+    def test_backfill_copies_updated_at_for_pending_only(self):
+        migration = importlib.import_module("apps.recruiters.migrations.0002_submitted_at")
+        # Rows that predate the field: drop the constraint (rolled back with the test) so a
+        # pending row can have no submitted_at, as it could before migration 0002.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "ALTER TABLE recruiters_recruiterprofile "
+                "DROP CONSTRAINT recruiter_pending_has_submitted_at"
+            )
+        pending = RecruiterProfileFactory(verification_status=V.PENDING, submitted_at=None)
+        unverified = RecruiterProfileFactory(verification_status=V.UNVERIFIED)
+        migration.backfill_pending(django_apps, None)
+        pending.refresh_from_db()
+        unverified.refresh_from_db()
+        assert pending.submitted_at == pending.updated_at
+        assert unverified.submitted_at is None
