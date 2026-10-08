@@ -40,11 +40,24 @@ class TestAddExperience:
             {"title": "x", "start_year": 2020, "end_year": 2019},
             {"title": "x", "start_year": 2020, "end_year": 2200},
             {"title": "x"},
+            {"title": "x" * 161, "start_year": 2020},
+            {"title": "x", "start_year": 2020, "company": "x" * 161},
+            {"title": "x", "start_year": 2020, "description": "x" * 2001},
         ],
     )
     def test_rejects_bad_input_before_the_database_does(self, fields):
         with pytest.raises(ValidationFailed):
             services.add_experience(talent=TalentProfileFactory(), **fields)
+
+    def test_trims_text_and_accepts_the_limits(self):
+        exp = services.add_experience(
+            talent=TalentProfileFactory(),
+            title=f"  {'t' * 160}  ",
+            company=" Studio ",
+            start_year=2020,
+            description="d" * 2000,
+        )
+        assert (len(exp.title), exp.company) == (160, "Studio")
 
     def test_rejects_unknown_fields(self):
         with pytest.raises(ValidationFailed):
