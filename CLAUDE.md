@@ -34,7 +34,8 @@ so SQLite will not work.
 2. `pytest` passes.
 3. `makemigrations --check --dry-run` reports no changes.
 4. New behaviour has tests. Bug fixes start with a failing test.
-5. Docs are updated if a convention or public contract changed.
+5. OpenAPI updated for any changed endpoint (`@extend_schema`; check `/api/docs/`).
+6. Docs are updated if a convention or public contract changed.
 
 Never commit with failing tests. Never skip hooks or CI.
 
@@ -118,6 +119,31 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
   changes.
 - Do not rewrite history on pushed shared branches. Do not force-push to `main`.
 - Never commit secrets. `.env` is git-ignored. Update `.env.example` when adding a variable.
+
+## Working in cloud sessions
+
+- `main` is protected by a ruleset: PR required, status check `test` must pass, branch must be up
+  to date with `main`. Never push to `main`. Open a PR and do not merge it yourself.
+- Scope, pacing, locked decisions and open items live in `docs/DELIVERY_PLAN.md`. Do not build
+  anything marked "ASK BEFORE STARTING" without approval.
+- Stop and ask when a decision is not covered by this file or the plan: data model changes, new
+  dependencies, API contract changes, anything touching money.
+- Docker is not available. Postgres 16 is preinstalled; Redis is not needed (test settings blank
+  `REDIS_URL` and run Celery eagerly). Get to a green `pytest` with:
+
+```bash
+service postgresql start
+su postgres -c "psql -c \"CREATE ROLE prepropost LOGIN PASSWORD 'prepropost' CREATEDB;\" \
+  -c \"CREATE DATABASE prepropost OWNER prepropost;\""   # first run only
+python3.12 -m venv /tmp/venv && . /tmp/venv/bin/activate   # CI uses 3.12
+pip install -r requirements/dev.txt
+export DJANGO_SETTINGS_MODULE=config.settings.test
+export DJANGO_SECRET_KEY=cloud-session-secret-key-at-least-32-bytes   # short keys spam JWT warnings
+export DATABASE_URL=postgres://prepropost:prepropost@localhost:5432/prepropost
+make lint && python manage.py makemigrations --check --dry-run && pytest
+```
+
+`CREATEDB` is required because pytest-django creates `test_prepropost`.
 
 ## Roadmap (context for planning)
 
