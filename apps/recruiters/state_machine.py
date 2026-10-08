@@ -10,5 +10,6 @@ VERIFICATION = StateMachine(
         (V.REJECTED, "submit"): V.PENDING,
         (V.PENDING, "approve"): V.APPROVED,
         (V.PENDING, "reject"): V.REJECTED,
+        (V.APPROVED, "identity_changed"): V.PENDING,
     }
 )

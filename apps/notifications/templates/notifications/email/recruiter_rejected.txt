@@ -1,0 +1,10 @@
+{% autoescape off %}Hi {{ profile.display_name }},
+
+We could not verify your recruiter profile on Pre Pro Post yet.
+
+Reason: {{ profile.rejection_reason }}
+
+Update your profile and submit it for review again:
+
+{{ frontend_url }}
+{% endautoescape %}

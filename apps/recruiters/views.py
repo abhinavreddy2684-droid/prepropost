@@ -70,6 +70,11 @@ class RecruiterMeView(APIView):
 
     @extend_schema(
         summary="Update your profile (send only the fields to change)",
+        description=(
+            "If an approved recruiter changes display_name, company_name, recruiter_type or "
+            "website (ignoring case and surrounding spaces), the profile goes back to "
+            "`pending` review and cannot send offers until approved again. city is cosmetic."
+        ),
         request=serializers.RecruiterUpdateSerializer,
         responses={
             200: serializers.RecruiterProfileSerializer,
@@ -111,7 +116,8 @@ class RecruiterSubmitView(APIView):
 
 
 class _ReviewPagination(DefaultCursorPagination):
-    ordering = ("updated_at", "id")
+    def get_ordering(self, request, queryset, view):
+        return selectors.review_ordering(view.review_status)
 
 
 class RecruiterReviewListView(ListAPIView):
@@ -123,6 +129,7 @@ class RecruiterReviewListView(ListAPIView):
         wanted = self.request.query_params.get("status", RecruiterProfile.Verification.PENDING)
         if wanted not in RecruiterProfile.Verification.values:
             raise ValidationFailed(f"Unknown status '{wanted}'.", details={"field": "status"})
+        self.review_status = wanted
         return selectors.list_for_review(status=wanted)
 
     @extend_schema(

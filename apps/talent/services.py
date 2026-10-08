@@ -48,13 +48,17 @@ def create_talent_profile(
 
 @transaction.atomic
 def update_talent_profile(*, talent: TalentProfile, data: Mapping) -> TalentProfile:
+    """Edit the caller-editable fields only. Locks the row and saves just those columns, so a
+    stale instance cannot overwrite server-controlled state (published, onboarding, KYC)."""
+    talent = TalentProfile.objects.select_for_update().get(pk=talent.pk)
     _apply_fields(talent, data)
     _validate_profile(talent)
-    talent.save()
+    talent.save(update_fields=[*data, "updated_at"])
     return talent
 
 
 _MAX_NAME_LENGTH = 150  # mirrors the column size
+_MAX_BIO_LENGTH = 2000  # matches the API; the column itself is unbounded
 _MAX_YEARS_EXPERIENCE = 80  # mirrors talent_years_experience_sane
 
 
@@ -69,6 +73,10 @@ def _validate_profile(talent: TalentProfile) -> None:
                 f"{field} must be at most {_MAX_NAME_LENGTH} characters.", details={"field": field}
             )
         setattr(talent, field, value)
+    if len(talent.bio or "") > _MAX_BIO_LENGTH:
+        raise ValidationFailed(
+            f"bio must be at most {_MAX_BIO_LENGTH} characters.", details={"field": "bio"}
+        )
     if talent.gender and talent.gender not in TalentProfile.Gender.values:
         raise ValidationFailed(f"Unknown gender '{talent.gender}'.", details={"field": "gender"})
     years = talent.years_experience
@@ -197,6 +205,7 @@ def set_published(*, talent: TalentProfile, published: bool) -> TalentProfile:
 
 _EXPERIENCE_FIELDS = {"title", "company", "start_year", "end_year", "description", "craft"}
 _YEAR_RANGE = (1900, 2100)  # mirrors the DB check constraint
+_EXPERIENCE_TEXT_LIMITS = {"title": 160, "company": 160, "description": 2000}  # columns / API
 
 
 def _apply_experience(talent: TalentProfile, experience: Experience, data: Mapping) -> None:
@@ -206,7 +215,14 @@ def _apply_experience(talent: TalentProfile, experience: Experience, data: Mappi
     for name, value in data.items():
         setattr(experience, name, value)
 
-    if not (experience.title or "").strip():
+    for name, limit in _EXPERIENCE_TEXT_LIMITS.items():
+        value = (getattr(experience, name) or "").strip()
+        if len(value) > limit:
+            raise ValidationFailed(
+                f"{name} must be at most {limit} characters.", details={"field": name}
+            )
+        setattr(experience, name, value)
+    if not experience.title:
         raise ValidationFailed("Title is required.")
     start, end = experience.start_year, experience.end_year
     low, high = _YEAR_RANGE

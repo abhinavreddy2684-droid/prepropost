@@ -34,6 +34,15 @@ class TestProfile:
                 talent=talent, data={"is_published": True, "kyc_status": "verified"}
             )
 
+    def test_stale_update_keeps_server_controlled_fields(self):
+        talent = TalentProfileFactory(is_published=True)
+        stale = TalentProfile.objects.get(pk=talent.pk)
+        services.set_published(talent=talent, published=False)  # e.g. a concurrent request
+        TalentProfile.objects.filter(pk=talent.pk).update(kyc_status="pending")
+        services.update_talent_profile(talent=stale, data={"bio": "New bio"})
+        talent.refresh_from_db()
+        assert (talent.bio, talent.is_published, talent.kyc_status) == ("New bio", False, "pending")
+
     def test_rejects_future_date_of_birth(self):
         talent = TalentProfileFactory()
         with pytest.raises(ValidationFailed):
@@ -50,6 +59,7 @@ class TestProfileValidation:
             {"full_name": "   "},
             {"professional_name": ""},
             {"professional_name": "x" * 151},
+            {"bio": "x" * 2001},
         ],
     )
     def test_update_rejects_values_the_database_would_choke_on(self, data):

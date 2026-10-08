@@ -72,6 +72,15 @@ class TestOwnProfile:
         profile.refresh_from_db()
         assert profile.verification_status == V.UNVERIFIED
 
+    def test_identity_edit_by_approved_recruiter_needs_review_again(self, auth_client):
+        profile = RecruiterProfileFactory(verification_status=V.APPROVED, company_name="xyz")
+        api, _ = auth_client(profile.user)
+        body = api.patch(ME, {"company_name": "Xyz"}, format="json").json()
+        assert body["verification_status"] == "approved"
+        body = api.patch(ME, {"company_name": "Other Co"}, format="json").json()
+        assert body["verification_status"] == "pending" and body["verified_at"] is None
+        assert body["submitted_at"] is not None
+
     def test_response_hides_reviewer(self, recruiter):
         api, _ = recruiter
         assert "verified_by" not in api.get(ME).json()
@@ -147,6 +156,28 @@ class TestStaffReview:
         results = staff_client.get(QUEUE).json()["results"]
         assert [r["id"] for r in results] == [str(first.id), str(second.id)]
         assert {"email", "email_verified"} <= set(results[0])
+
+    def test_queue_orders_by_submission_not_last_edit(self, staff_client):
+        now = timezone.now()
+        early = RecruiterProfileFactory(
+            verification_status=V.PENDING, submitted_at=now - timezone.timedelta(days=2)
+        )
+        late = RecruiterProfileFactory(
+            verification_status=V.PENDING, submitted_at=now - timezone.timedelta(days=1)
+        )
+        early.save()  # a later edit bumps updated_at but must not cost its place in the queue
+        results = staff_client.get(QUEUE).json()["results"]
+        assert [r["id"] for r in results] == [str(early.id), str(late.id)]
+        assert results[0]["submitted_at"] is not None
+
+    def test_non_pending_lists_page_without_submitted_at(self, staff_client):
+        ids = {str(RecruiterProfileFactory(verification_status=V.UNVERIFIED).id) for _ in range(3)}
+        seen, url = set(), f"{QUEUE}?status=unverified&limit=2"
+        while url:
+            page = staff_client.get(url).json()
+            seen |= {r["id"] for r in page["results"]}
+            url = page["next"]
+        assert seen == ids
 
     def test_queue_filters_by_status_and_rejects_unknown(self, staff_client):
         RecruiterProfileFactory(verification_status=V.APPROVED)

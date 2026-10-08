@@ -31,6 +31,7 @@ class RecruiterProfileSerializer(serializers.ModelSerializer):
             "verification_status",
             "rejection_reason",
             "verified_at",
+            "submitted_at",
             "created_at",
             "updated_at",
         )

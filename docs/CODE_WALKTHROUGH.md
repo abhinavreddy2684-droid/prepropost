@@ -285,8 +285,10 @@ Both are pure subscribers: `apps.py: ready()` imports `subscribers`, which regis
 | `OfferDeclined` | `hiring/events.py` | `decline_offer` | notifications (recruiter), analytics |
 | `OfferWithdrawn` | `hiring/events.py` | `withdraw_offer` | notifications (talent), analytics |
 | `OfferExpired` | `hiring/events.py` | `expire_due_offers`, and `_respond` on a lapsed offer | notifications (both parties), analytics |
+| `RecruiterVerified` (`recruiter_verified`) | `recruiters/events.py` | `recruiters.services.approve_recruiter` | notifications (recruiter: in-app + email) |
+| `RecruiterRejected` (`recruiter_rejected`) | `recruiters/events.py` | `reject_recruiter` | notifications (recruiter: in-app + email with reason) |
 
-Hiring events share `_OfferEvent` fields: `offer_id, project_id, recruiter_id, talent_user_id, actor_id`. Talent and recruiter services publish nothing (profile created, published, approved and rejected all notify nobody).
+Hiring events share `_OfferEvent` fields: `offer_id, project_id, recruiter_id, talent_user_id, actor_id`. Recruiter events carry `profile_id, user_id, reviewer_id`. Talent services publish nothing, and a recruiter sent back to review by an identity edit publishes nothing either.
 
 ---
 

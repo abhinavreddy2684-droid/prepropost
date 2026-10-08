@@ -1,6 +1,6 @@
 # Pre Pro Post: backend delivery plan (MVP-A and MVP-B)
 
-**Status:** foundation v0.1.0, M1.1 and M1.4 done.
+**Status:** foundation v0.1.0, M1.1 to M1.4 done (including the M1.4 follow-up); M1.5 next.
 
 ## Principles
 
@@ -37,10 +37,12 @@
 - **M5 Engagement and escrow:** engagement state machine created on offer acceptance; double-entry
   ledger with a 5% commission snapshot; payment provider in test mode with signed webhooks and
   idempotency; funding, delivery, recruiter approval, talent escalation path.
-- **M6 Payouts, disputes, admin:** talent KYC and payout onboarding; release funds and payout job
-  (adds a releasing state); refunds, cancellation, dispute workflow; admin console (freeze payouts,
-  resolve disputes, moderate media, recruiter revoke/suspend); reconciliation report (ledger vs
+- **M6 Payouts, disputes, admin:** 6.1 talent KYC and payout onboarding; 6.2 release funds and
+  payout job (adds a releasing state); 6.3 refunds, cancellation, dispute workflow; 6.4 admin
+  console (freeze payouts, resolve disputes, moderate media); 6.5 reconciliation report (ledger vs
   provider).
+  - 6.4 also covers **recruiter revoke/suspend**: staff can withdraw an approval or suspend a
+    recruiter. M1.4 has approve, reject and re-verification after identity edits, but no revoke.
 
 ## Locked product decisions
 

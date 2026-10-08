@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 from apps.common.models import BaseModel
 
@@ -35,6 +36,16 @@ class RecruiterProfile(BaseModel):
     )
     verified_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.CharField(max_length=255, blank=True)
+    # When the profile last entered the review queue; the queue is ordered by it.
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=~Q(verification_status="pending") | Q(submitted_at__isnull=False),
+                name="recruiter_pending_has_submitted_at",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.display_name

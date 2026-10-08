@@ -27,6 +27,7 @@ common  <-  accounts, reference  <-  media_library, talent, recruiters  <-  hiri
 
 * `hiring` asks `recruiters.selectors.is_verified_recruiter` and
   `talent.selectors.has_craft` - it never queries their tables.
+* `notifications` also subscribes to `recruiters.events` (review outcome: in-app + email).
 * `notifications` and `analytics` subscribe to `hiring.events`; `hiring` does not
   know they exist. Add a new reaction (email, CRM sync) without touching hiring.
 * `reference` never imports other apps: they register their enums via
