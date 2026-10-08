@@ -1,8 +1,10 @@
 from django.db import transaction
 from django.utils import timezone
 
+from apps.common.events import publish
 from apps.common.exceptions import Conflict, PermissionDenied, ValidationFailed
 
+from .events import RecruiterRejected, RecruiterVerified
 from .models import RecruiterProfile
 from .state_machine import VERIFICATION
 
@@ -107,6 +109,7 @@ def approve_recruiter(*, profile: RecruiterProfile, reviewer) -> RecruiterProfil
     profile = _transition(profile.pk, "approve")
     profile.verified_by, profile.verified_at = reviewer, timezone.now()
     profile.save(update_fields=["verification_status", "verified_by", "verified_at", "updated_at"])
+    publish(RecruiterVerified(profile.pk, profile.user_id, reviewer.pk))
     return profile
 
 
@@ -133,6 +136,7 @@ def reject_recruiter(*, profile: RecruiterProfile, reviewer, reason: str) -> Rec
             "updated_at",
         ]
     )
+    publish(RecruiterRejected(profile.pk, profile.user_id, reviewer.pk))
     return profile
 
 

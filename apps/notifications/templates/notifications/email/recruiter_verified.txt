@@ -1,0 +1,8 @@
+{% autoescape off %}Hi {{ profile.display_name }},
+
+Your recruiter profile on Pre Pro Post has been verified. You can now create projects and send offers to talent.
+
+{{ frontend_url }}
+
+Note: if you later change your name, company, recruiter type or website, your profile goes back to review until it is approved again.
+{% endautoescape %}
