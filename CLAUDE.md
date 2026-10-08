@@ -147,20 +147,25 @@ make lint && python manage.py makemigrations --check --dry-run && pytest
 
 ## Roadmap (context for planning)
 
+Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
+
 - Done (`v0.1.0`): foundation, data model, reference data and bootstrap endpoint, profiles,
   search selector, offer lifecycle, notifications, analytics events.
-- Done (M1.1): JWT auth (simplejwt, rotating blacklisted refresh), email verification, talent
-  onboarding + profile + experience + availability endpoints, OpenAPI. Phone OTP deferred.
+- Done (M1.1-M1.3): JWT auth (simplejwt, rotating blacklisted refresh), email verification,
+  crafts and locations, talent onboarding + profile + experience + availability endpoints,
+  OpenAPI. Phone OTP deferred.
 - Done (M1.4): recruiter profile endpoints (`/api/recruiters/me`, submit for review), staff review
   queue with approve/reject endpoints and Django admin actions. Email must be verified to submit;
   approval is manual. No recruiter events yet (approve/reject notify nobody), and approval has no
   revoke or re-verification-on-edit.
-- M2: media upload via pre-signed URLs and background processing. M3: search endpoints and
-  ranking. M4: offer and project endpoints plus an offers inbox. M5: engagement, escrow and ledger
-  (double-entry, idempotent, webhook-driven). M6: payouts, KYC, disputes, admin tooling.
-- Product decisions already made: recruiter approval only (no auto-approval, with a talent
-  escalation path); admin-mediated disputes; no free-form chat in MVP-A; contact details revealed
-  only after funding; tiered KYC with talent KYC required before funding.
+- **Open (M1.5): profile completeness.** This is the next MVP-A task.
+- M2-M4 are partly built below the API: media models and likes, `search_talents`, and the hiring
+  services, events and notifications exist, but none have endpoints yet (see
+  `docs/CODE_WALKTHROUGH.md` section 7). M2: pre-signed media upload. M3: search endpoints (advanced
+  ranking deferred). M4: project and offer endpoints plus an offers inbox.
+- MVP-B (M5 escrow and ledger, M6 payouts, KYC, disputes, admin): **ask before starting.**
+  M7: hardening and launch.
+- Product decisions are locked in the plan; do not reopen them without asking.
 
 ## Frontend contract
 
