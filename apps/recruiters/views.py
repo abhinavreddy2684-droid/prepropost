@@ -70,6 +70,11 @@ class RecruiterMeView(APIView):
 
     @extend_schema(
         summary="Update your profile (send only the fields to change)",
+        description=(
+            "If an approved recruiter changes display_name, company_name, recruiter_type or "
+            "website (ignoring case and surrounding spaces), the profile goes back to "
+            "`pending` review and cannot send offers until approved again. city is cosmetic."
+        ),
         request=serializers.RecruiterUpdateSerializer,
         responses={
             200: serializers.RecruiterProfileSerializer,

@@ -45,17 +45,42 @@ def create_recruiter_profile(*, user, display_name: str, **extra) -> RecruiterPr
     return profile
 
 
+# Fields a reviewer vouched for. Changing one sends an approved recruiter back to review;
+# anything else (city) is cosmetic.
+IDENTITY_FIELDS = ("display_name", "company_name", "recruiter_type", "website")
+
+
+def _identity(profile: RecruiterProfile) -> tuple[str, ...]:
+    """Identity as a reviewer sees it: case and surrounding spaces do not count as a change."""
+    return tuple((getattr(profile, f) or "").strip().casefold() for f in IDENTITY_FIELDS)
+
+
 @transaction.atomic
-def update_recruiter_profile(*, profile: RecruiterProfile, data: dict) -> RecruiterProfile:
-    """Edit descriptive fields. Verification state is never touched here."""
+def update_recruiter_profile(
+    *, profile: RecruiterProfile, data: dict, now=None
+) -> RecruiterProfile:
+    """Edit descriptive fields. An approved recruiter who changes an identity field goes back
+    to pending review and loses verification until a reviewer approves again."""
     unknown = set(data) - EDITABLE_FIELDS - {"display_name"}
     if unknown:
         raise ValidationFailed(f"Fields not editable: {', '.join(sorted(unknown))}.")
     profile = RecruiterProfile.objects.select_for_update().get(pk=profile.pk)
+    before = _identity(profile)
     for name, value in data.items():
         setattr(profile, name, value)
     _validate_profile(profile)
-    profile.save(update_fields=[*data, "updated_at"])
+    fields = [*data, "updated_at"]
+    if (
+        profile.verification_status == RecruiterProfile.Verification.APPROVED
+        and _identity(profile) != before
+    ):
+        profile.verification_status = VERIFICATION.next_state(
+            profile.verification_status, "identity_changed"
+        )
+        profile.verified_by, profile.verified_at = None, None
+        profile.submitted_at = now or timezone.now()
+        fields += ["verification_status", "verified_by", "verified_at", "submitted_at"]
+    profile.save(update_fields=fields)
     return profile
 
 

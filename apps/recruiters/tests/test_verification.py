@@ -109,14 +109,14 @@ class TestCreateValidation:
 
 
 class TestUpdate:
-    def test_updates_fields_and_keeps_verification(self):
-        profile = RecruiterProfileFactory()
+    def test_updates_fields(self):
+        profile = RecruiterProfileFactory(verification_status=V.UNVERIFIED)
         updated = services.update_recruiter_profile(
             profile=profile, data={"display_name": " New ", "website": "https://x.example"}
         )
         updated.refresh_from_db()
         assert updated.display_name == "New" and updated.website == "https://x.example"
-        assert updated.verification_status == V.APPROVED
+        assert updated.verification_status == V.UNVERIFIED
 
     @pytest.mark.parametrize(
         "data", [{"verification_status": "approved"}, {"display_name": ""}, {"recruiter_type": "x"}]
@@ -124,6 +124,65 @@ class TestUpdate:
     def test_rejects_bad_input(self, data):
         with pytest.raises(ValidationFailed):
             services.update_recruiter_profile(profile=RecruiterProfileFactory(), data=data)
+
+
+class TestReverificationOnEdit:
+    @pytest.fixture
+    def approved(self, staff):
+        return RecruiterProfileFactory(
+            display_name="Studio X",
+            company_name="xyz",
+            website="https://studio.example",
+            verified_by=staff,
+            verified_at=timezone.now(),
+        )
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {"display_name": "Studio Y"},
+            {"company_name": "abc"},
+            {"recruiter_type": "company"},
+            {"website": "https://other.example"},
+        ],
+    )
+    def test_identity_edit_sends_approved_back_to_review(self, approved, data):
+        now = timezone.now()
+        updated = services.update_recruiter_profile(profile=approved, data=data, now=now)
+        updated.refresh_from_db()
+        assert updated.verification_status == V.PENDING
+        assert (updated.verified_by, updated.verified_at) == (None, None)
+        assert updated.submitted_at == now
+        assert not is_verified_recruiter(updated.user)
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {"city": None},
+            {"company_name": "Xyz"},  # capitalisation only
+            {"display_name": "  studio x "},  # case and spaces only
+            {"display_name": "Studio X", "website": "https://studio.example"},  # unchanged
+        ],
+    )
+    def test_cosmetic_edit_keeps_approval(self, approved, staff, data):
+        services.update_recruiter_profile(profile=approved, data=data)
+        approved.refresh_from_db()
+        assert approved.verification_status == V.APPROVED
+        assert approved.verified_by == staff and approved.verified_at is not None
+        assert approved.submitted_at is None
+
+    @pytest.mark.parametrize("status", [V.UNVERIFIED, V.PENDING, V.REJECTED])
+    def test_identity_edit_leaves_other_states_alone(self, status):
+        profile = RecruiterProfileFactory(verification_status=status)
+        before = profile.submitted_at
+        services.update_recruiter_profile(profile=profile, data={"display_name": "Renamed"})
+        profile.refresh_from_db()
+        assert (profile.verification_status, profile.submitted_at) == (status, before)
+
+    def test_reapproval_after_identity_edit(self, approved, staff):
+        services.update_recruiter_profile(profile=approved, data={"company_name": "abc"})
+        reapproved = services.approve_recruiter(profile=approved, reviewer=staff)
+        assert reapproved.verification_status == V.APPROVED and reapproved.verified_by == staff
 
 
 def test_get_recruiter_profile_selector():

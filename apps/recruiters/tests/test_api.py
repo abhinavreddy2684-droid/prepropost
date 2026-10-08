@@ -72,6 +72,15 @@ class TestOwnProfile:
         profile.refresh_from_db()
         assert profile.verification_status == V.UNVERIFIED
 
+    def test_identity_edit_by_approved_recruiter_needs_review_again(self, auth_client):
+        profile = RecruiterProfileFactory(verification_status=V.APPROVED, company_name="xyz")
+        api, _ = auth_client(profile.user)
+        body = api.patch(ME, {"company_name": "Xyz"}, format="json").json()
+        assert body["verification_status"] == "approved"
+        body = api.patch(ME, {"company_name": "Other Co"}, format="json").json()
+        assert body["verification_status"] == "pending" and body["verified_at"] is None
+        assert body["submitted_at"] is not None
+
     def test_response_hides_reviewer(self, recruiter):
         api, _ = recruiter
         assert "verified_by" not in api.get(ME).json()
