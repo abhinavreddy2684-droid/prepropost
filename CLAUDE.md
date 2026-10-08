@@ -53,7 +53,8 @@ Every app under `apps/` is a bounded context with the same layers:
 | `admin.py` | Staff tooling | change workflow state except via services |
 
 Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_library`, `talent`,
-`recruiters` <- `hiring`. `notifications` and `analytics` only subscribe to `hiring.events`.
+`recruiters` <- `hiring`. `notifications` subscribes to `hiring.events` and `recruiters.events`;
+`analytics` only to `hiring.events`.
 
 - **Cross-app access goes through the other app's `selectors`/`services`.** Never query another
   app's tables directly. Example: hiring calls `recruiters.selectors.is_verified_recruiter`.
@@ -156,8 +157,11 @@ Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
   OpenAPI. Phone OTP deferred.
 - Done (M1.4): recruiter profile endpoints (`/api/recruiters/me`, submit for review), staff review
   queue with approve/reject endpoints and Django admin actions. Email must be verified to submit;
-  approval is manual. No recruiter events yet (approve/reject notify nobody), and approval has no
-  revoke or re-verification-on-edit.
+  approval is manual. Follow-up done: the pending queue is ordered by `submitted_at`; an approved
+  recruiter who edits an identity field (name, company, type, website; case-insensitive) goes back
+  to pending; `RecruiterVerified`/`RecruiterRejected` events drive an in-app notification and an
+  email. Revoke/suspend is not built (M6.4). Talent services got the same hardening (row lock on
+  edit, text caps, lifecycle fields read-only in admin).
 - **Open (M1.5): profile completeness.** This is the next MVP-A task.
 - M2-M4 are partly built below the API: media models and likes, `search_talents`, and the hiring
   services, events and notifications exist, but none have endpoints yet (see
