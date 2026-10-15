@@ -9,7 +9,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.media_library.models import Media
-from apps.media_library.serializers import SignedUploadSerializer
+from apps.media_library.selectors import signed_urls
+from apps.media_library.serializers import SignedUploadSerializer, SignedUrlsSerializer
 
 from .models import (
     AvailabilityStatus,
@@ -47,9 +48,15 @@ class ExperienceSerializer(serializers.ModelSerializer):
         fields = ("id", "title", "company", "start_year", "end_year", "description", "craft")
 
 
+def _urls(media) -> dict | None:
+    """Signed URLs. Callers only serialise media the viewer may see (public, owner or staff)."""
+    return None if media is None else signed_urls(media)
+
+
 class PublicTalentSerializer(serializers.ModelSerializer):
     city = CityOutSerializer(read_only=True)
     avatar_id = serializers.UUIDField(read_only=True)
+    avatar = serializers.SerializerMethodField()
     crafts = TalentCraftOutSerializer(source="talent_crafts", many=True, read_only=True)
     experiences = ExperienceSerializer(many=True, read_only=True)
 
@@ -63,9 +70,15 @@ class PublicTalentSerializer(serializers.ModelSerializer):
             "years_experience",
             "genres",
             "avatar_id",
+            "avatar",
             "crafts",
             "experiences",
         )
+
+    @extend_schema_field(SignedUrlsSerializer(allow_null=True))
+    def get_avatar(self, obj) -> dict | None:
+        """The approved photo only; a photo in review is never public."""
+        return _urls(obj.avatar.media) if obj.avatar_id else None
 
 
 class CompletenessSerializer(serializers.Serializer):
@@ -171,6 +184,7 @@ class GalleryItemOwnerSerializer(serializers.ModelSerializer):
     craft = serializers.SlugRelatedField(slug_field="slug", read_only=True)
     stage = serializers.SerializerMethodField()
     failure_reason = serializers.SerializerMethodField()
+    urls = serializers.SerializerMethodField()
 
     class Meta:
         model = GalleryItem
@@ -191,6 +205,7 @@ class GalleryItemOwnerSerializer(serializers.ModelSerializer):
             "moderation_note",
             "submitted_at",
             "likes_count",
+            "urls",
             "created_at",
             "updated_at",
         )
@@ -198,6 +213,10 @@ class GalleryItemOwnerSerializer(serializers.ModelSerializer):
 
     def get_kind(self, obj) -> str:
         return "link" if obj.is_link else obj.media.kind
+
+    @extend_schema_field(SignedUrlsSerializer(allow_null=True))
+    def get_urls(self, obj) -> dict | None:
+        return _urls(obj.media)
 
     @extend_schema_field(serializers.ChoiceField(choices=GalleryStage.choices))
     def get_stage(self, obj) -> str:
@@ -247,6 +266,7 @@ class AvatarSubmissionOwnerSerializer(serializers.ModelSerializer):
     media_id = serializers.UUIDField(read_only=True)
     stage = serializers.SerializerMethodField()
     failure_reason = serializers.CharField(source="media.failure_reason", read_only=True)
+    urls = serializers.SerializerMethodField()
 
     class Meta:
         model = AvatarSubmission
@@ -257,6 +277,7 @@ class AvatarSubmissionOwnerSerializer(serializers.ModelSerializer):
             "failure_reason",
             "moderation_reason",
             "moderation_note",
+            "urls",
             "created_at",
         )
         read_only_fields = fields
@@ -265,15 +286,24 @@ class AvatarSubmissionOwnerSerializer(serializers.ModelSerializer):
     def get_stage(self, obj) -> str:
         return avatar_stage(obj)
 
+    @extend_schema_field(SignedUrlsSerializer(allow_null=True))
+    def get_urls(self, obj) -> dict | None:
+        return _urls(obj.media)  # owner only
+
 
 class ApprovedAvatarSerializer(serializers.ModelSerializer):
     media_id = serializers.UUIDField(read_only=True)
     approved_at = serializers.DateTimeField(source="reviewed_at", read_only=True)
+    urls = serializers.SerializerMethodField()
 
     class Meta:
         model = AvatarSubmission
-        fields = ("id", "media_id", "approved_at")
+        fields = ("id", "media_id", "approved_at", "urls")
         read_only_fields = fields
+
+    @extend_schema_field(SignedUrlsSerializer(allow_null=True))
+    def get_urls(self, obj) -> dict | None:
+        return _urls(obj.media)
 
 
 class AvatarStateSerializer(serializers.Serializer):
@@ -288,3 +318,45 @@ class AvatarUploadResponseSerializer(serializers.Serializer):
     media_id = serializers.UUIDField()
     upload = SignedUploadSerializer()
     expires_at = serializers.DateTimeField()
+
+
+class PublicGalleryItemSerializer(serializers.ModelSerializer):
+    """What a visitor sees. Only items passing the public visibility rule reach this."""
+
+    kind = serializers.SerializerMethodField()
+    craft = serializers.SlugRelatedField(slug_field="slug", read_only=True)
+    width = serializers.IntegerField(source="media.width", read_only=True, allow_null=True)
+    height = serializers.IntegerField(source="media.height", read_only=True, allow_null=True)
+    urls = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GalleryItem
+        fields = (
+            "id",
+            "kind",
+            "external_url",
+            "link_provider",
+            "title",
+            "description",
+            "year",
+            "craft",
+            "position",
+            "likes_count",
+            "width",
+            "height",
+            "urls",
+        )
+        read_only_fields = fields
+
+    def get_kind(self, obj) -> str:
+        return "link" if obj.is_link else obj.media.kind
+
+    @extend_schema_field(SignedUrlsSerializer(allow_null=True))
+    def get_urls(self, obj) -> dict | None:
+        return _urls(obj.media)
+
+
+class LikeStateSerializer(serializers.Serializer):
+    item_id = serializers.UUIDField()
+    liked = serializers.BooleanField()
+    likes_count = serializers.IntegerField()

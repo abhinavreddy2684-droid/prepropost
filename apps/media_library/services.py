@@ -21,8 +21,8 @@ from apps.accounts.services import lock_user
 from apps.common.events import publish
 from apps.common.exceptions import Conflict, Gone, NotFound, Unavailable, ValidationFailed
 
-from . import selectors, storage
-from .events import MediaExpired
+from . import processing, selectors, storage
+from .events import MediaExpired, MediaFailed, MediaReady
 from .models import Media
 from .policies import TypeRule, get_policy
 from .state_machine import MEDIA_MACHINE
@@ -144,7 +144,14 @@ def confirm(*, user, media_id, now=None) -> Media:
     media.status = MEDIA_MACHINE.next_state(media.status, "confirm")
     media.actual_size, media.etag, media.uploaded_at = info.size, info.etag, now
     media.save(update_fields=["status", "actual_size", "etag", "uploaded_at", "updated_at"])
+    transaction.on_commit(lambda: _queue_processing(media.pk))
     return media
+
+
+def _queue_processing(media_id) -> None:
+    from .tasks import process_media  # tasks import this module
+
+    process_media.delay(str(media_id))
 
 
 def _expire(media: Media, event: str, now: datetime) -> None:
@@ -217,10 +224,11 @@ def expire_pending_uploads(*, now=None, batch: int = 500) -> int:
 def purge_discarded_media(*, now=None, batch: int = 500) -> int:
     """Delete originals and thumbnails of discarded media. Raises StorageError for the task to
     retry; rows are marked purged only after storage confirms the delete."""
+    # A row the worker is still on is skipped: it may yet write thumbnails.
     pending = list(
-        Media.objects.filter(discarded_at__isnull=False, purged_at__isnull=True).order_by(
-            "discarded_at"
-        )[:batch]
+        Media.objects.filter(discarded_at__isnull=False, purged_at__isnull=True)
+        .exclude(status=S.PROCESSING)
+        .order_by("discarded_at")[:batch]
     )
     _purge(pending, now or timezone.now())
     return len(pending)
@@ -231,3 +239,117 @@ def _purge(media: list[Media], now: datetime) -> None:
         return
     storage.delete([key for m in media for key in m.all_object_keys])
     Media.objects.filter(pk__in=[m.pk for m in media], purged_at__isnull=True).update(purged_at=now)
+
+
+# --- processing (the worker) -----------------------------------------------------------------
+
+
+@transaction.atomic
+def _start_processing(media_id, *, resume: bool) -> Media | None:
+    """UPLOADED -> PROCESSING. A retry after a storage error resumes a PROCESSING row; anything
+    else (already done, discarded, unknown) means there is nothing to do."""
+    media = Media.objects.select_for_update().filter(pk=media_id).first()
+    if media is None or media.discarded_at is not None:
+        return None
+    if media.status == S.UPLOADED:
+        media.status = MEDIA_MACHINE.next_state(media.status, "start")
+        media.save(update_fields=["status", "updated_at"])
+        return media
+    if resume and media.status == S.PROCESSING:
+        return media
+    return None
+
+
+@transaction.atomic
+def _finish(media_id, event: str, now, **fields) -> Media | None:
+    media = Media.objects.select_for_update().filter(pk=media_id).first()
+    if media is None or media.status != S.PROCESSING:
+        return None
+    media.status = MEDIA_MACHINE.next_state(media.status, event)
+    for name, value in fields.items():
+        setattr(media, name, value)
+    media.save(update_fields=["status", *fields, "updated_at"])
+    event_type = MediaReady if media.status == S.READY else MediaFailed
+    publish(event_type(media.pk, media.purpose, media.uploaded_by_id))
+    return media
+
+
+def fail_processing(media_id, reason: str, *, now=None) -> Media | None:
+    """PROCESSING -> FAILED with a reason code; emits `media_failed`."""
+    return _finish(media_id, "fail", now, failure_reason=reason)
+
+
+def process_media(media_id, *, resume: bool = False, now=None) -> Media | None:
+    """Validate the real file and make it safe to serve. Idempotent: exits quietly unless the
+    row is UPLOADED (or PROCESSING on a retry).
+
+    Validation failures end FAILED with a code and are not retried. StorageError propagates so
+    the task can retry; the task marks the row FAILED storage_error when retries run out.
+    Storage I/O happens outside any row lock.
+    """
+    media = _start_processing(media_id, resume=resume)
+    if media is None:
+        return None
+    try:
+        fields = _validate_and_clean(media)
+    except processing.Rejected as rejected:
+        return fail_processing(media.pk, rejected.reason, now=now)
+    return _finish(media.pk, "succeed", now, ready_at=now or timezone.now(), **fields)
+
+
+def _validate_and_clean(media: Media) -> dict:
+    policy = get_policy(media.purpose)
+    detected = processing.sniff_content_type(
+        storage.get(media.object_key, (0, processing.SNIFF_BYTES - 1))
+    )
+    rule = policy.rule_for(detected) if policy and detected else None
+    if rule is None:
+        raise processing.Rejected(Media.FailureReason.UNSUPPORTED_TYPE)
+    if rule.kind != media.kind:
+        raise processing.Rejected(Media.FailureReason.TYPE_MISMATCH)
+    size = media.actual_size if media.actual_size is not None else media.declared_size
+    if size > rule.max_bytes:
+        raise processing.Rejected(Media.FailureReason.TOO_LARGE)
+    fields = {"detected_content_type": detected}
+    if rule.kind != Media.Kind.IMAGE:
+        return fields  # audio, video and PDF are served as uploaded
+
+    image = processing.clean_image(
+        storage.get(media.object_key),
+        detected,
+        max_pixels=settings.MEDIA_MAX_IMAGE_PIXELS,
+        thumbnail_sizes=policy.thumbnail_sizes,
+    )
+    stored = storage.put(media.object_key, image.data, detected)
+    thumbnail_keys = {}
+    for size, data in image.thumbnails.items():
+        key = thumbnail_key_for(media.pk, size)
+        storage.put(key, data, "image/webp")
+        thumbnail_keys[str(size)] = key
+    return {
+        **fields,
+        "width": image.width,
+        "height": image.height,
+        "actual_size": stored.size,
+        "etag": stored.etag,
+        "thumbnail_keys": thumbnail_keys,
+    }
+
+
+def thumbnail_key_for(media_id, size: int) -> str:
+    return f"thumbs/{media_id}/{size}.webp"
+
+
+def warn_stuck_processing(*, now=None) -> int:
+    """Log (for monitoring) media that has sat in PROCESSING too long. No recovery is
+    attempted: a stuck row needs a person to look at the worker."""
+    now = now or timezone.now()
+    cutoff = now - timedelta(seconds=settings.MEDIA_PROCESSING_STUCK_SECONDS)
+    stuck = list(
+        Media.objects.filter(status=S.PROCESSING, updated_at__lt=cutoff).values_list(
+            "pk", flat=True
+        )[:100]
+    )
+    for media_id in stuck:
+        logger.warning("Media %s stuck in processing since before %s", media_id, cutoff)
+    return len(stuck)

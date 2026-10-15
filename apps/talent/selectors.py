@@ -175,7 +175,7 @@ def get_experience(talent: TalentProfile, experience_id) -> Experience | None:
 
 
 def _with_display_relations(qs):
-    return qs.select_related("city__state").prefetch_related(
+    return qs.select_related("city__state", "avatar__media").prefetch_related(
         "talent_crafts__craft", "experiences__craft"
     )
 

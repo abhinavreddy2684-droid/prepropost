@@ -165,6 +165,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.media_library.tasks.purge_discarded_media",
         "schedule": 30 * 60.0,
     },
+    "warn-stuck-media-processing": {
+        "task": "apps.media_library.tasks.warn_stuck_processing",
+        "schedule": 5 * 60.0,
+    },
 }
 
 # --- Domain configuration (tunable without code changes) -------------------
@@ -195,6 +199,9 @@ MEDIA_STORAGE = {
 MEDIA_CORS_ALLOWED_ORIGINS = env.list("MEDIA_CORS_ALLOWED_ORIGINS", default=[FRONTEND_URL])
 MEDIA_UPLOAD_URL_TTL = 600  # seconds a signed upload POST stays valid
 MEDIA_PENDING_TTL = 3600  # seconds a PENDING_UPLOAD row may wait for its bytes
+MEDIA_READ_URL_TTL = 900  # seconds a signed GET URL stays valid
+MEDIA_MAX_IMAGE_PIXELS = 40_000_000  # decompression-bomb guard
+MEDIA_PROCESSING_STUCK_SECONDS = 600  # warn (for monitoring) after this long in PROCESSING
 MEDIA_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 MEDIA_AUDIO_MAX_BYTES = 20 * 1024 * 1024
 MEDIA_VIDEO_MAX_BYTES = 200 * 1024 * 1024

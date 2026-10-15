@@ -38,4 +38,12 @@ urlpatterns = [
         name="talent-avatar-submission",
     ),
     path("talent/<uuid:pk>", views.PublicTalentView.as_view(), name="talent-public"),
+    path(
+        "talent/<uuid:pk>/gallery", views.PublicGalleryView.as_view(), name="talent-public-gallery"
+    ),
+    path(
+        "gallery-items/<uuid:pk>/like",
+        views.GalleryItemLikeView.as_view(),
+        name="gallery-item-like",
+    ),
 ]

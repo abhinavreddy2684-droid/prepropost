@@ -1,12 +1,13 @@
-"""Turns hiring and recruiter events into notifications. The publishers have no idea this
-module exists."""
+"""Turns hiring, recruiter and talent events into notifications. The publishers have no idea
+this module exists."""
 
 from apps.common.events import subscribe
 from apps.hiring import events as hiring_events
 from apps.recruiters import events as recruiter_events
+from apps.talent import events as talent_events
 
 from .services import notify
-from .tasks import send_recruiter_review_email
+from .tasks import send_recruiter_review_email, send_upload_failed_email, upload_failure_text
 
 
 def _payload(event) -> dict:
@@ -38,3 +39,21 @@ def _offer_expired(event):
 def _recruiter_reviewed(event):
     notify(user_id=event.user_id, kind=event.name, payload={"profile_id": str(event.profile_id)})
     send_recruiter_review_email.delay(str(event.profile_id), event.name)
+
+
+@subscribe(talent_events.GalleryUploadFailed, talent_events.AvatarUploadFailed)
+def _upload_failed(event):
+    if isinstance(event, talent_events.GalleryUploadFailed):
+        target = {"item_id": str(event.item_id)}
+    else:
+        target = {"submission_id": str(event.submission_id)}
+    notify(
+        user_id=event.user_id,
+        kind=event.name,
+        payload={
+            **target,
+            "failure_reason": event.failure_reason,
+            "message": upload_failure_text(event.failure_reason),
+        },
+    )
+    send_upload_failed_email.delay(str(event.user_id), event.name, event.failure_reason)
