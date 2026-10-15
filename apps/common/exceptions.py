@@ -40,3 +40,15 @@ class Conflict(DomainError):
 
 class InvalidTransition(Conflict):
     code = "invalid_transition"
+
+
+class Gone(DomainError):
+    """The resource existed but can no longer be used (e.g. an expired upload). HTTP 410."""
+
+    code = "gone"
+
+
+class Unavailable(DomainError):
+    """A dependency (object storage ...) is temporarily unreachable; retry later. HTTP 503."""
+
+    code = "unavailable"
