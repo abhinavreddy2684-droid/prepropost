@@ -83,6 +83,6 @@ Unit tests use the in-memory fake. Storage integration tests (`-m minio`) run ag
 MinIO when `MEDIA_TEST_S3_ENDPOINT` is set; CI starts one. Locally:
 
 ```bash
-docker run -d -p 9000:9000 minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+docker run -d -p 9000:9000 quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
 MEDIA_TEST_S3_ENDPOINT=http://localhost:9000 pytest -m minio
 ```
