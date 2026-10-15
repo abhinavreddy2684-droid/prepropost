@@ -11,14 +11,17 @@ from django.db import transaction
 from django.db.models import F, Max
 from django.utils import timezone
 
+from apps.common.events import publish
 from apps.common.exceptions import Conflict, NotFound, ValidationFailed
 from apps.common.text import normalize_tags
+from apps.media_library import selectors as media_selectors
 from apps.media_library import services as media_services
 from apps.media_library.models import Media
 from apps.media_library.services import UploadTicket
 from apps.reference.models import Craft
 
 from . import selectors
+from .events import AvatarUploadFailed, GalleryUploadFailed
 from .models import (
     AvailabilityOverride,
     AvailabilityStatus,
@@ -521,3 +524,37 @@ def handle_media_expired(*, media_id, purpose: str, now=None) -> None:
         AvatarSubmission.objects.filter(
             pk=submission.pk, moderation_status=ModerationStatus.PENDING_REVIEW
         ).delete()
+
+
+@transaction.atomic
+def handle_media_ready(*, media_id, purpose: str, now=None) -> None:
+    """A gallery file finished processing: enter the review queue if the item has a title.
+    (An avatar submission is reviewable as soon as its media is READY; nothing to record.)"""
+    if purpose != GALLERY_PURPOSE:
+        return
+    item = GalleryItem.objects.filter(media_id=media_id).first()
+    if item is None:
+        return
+    item = GalleryItem.objects.select_for_update().filter(pk=item.pk).first()
+    if item is not None and _mark_submitted_if_reviewable(item, now or timezone.now()):
+        item.save(update_fields=["submitted_at", "updated_at"])
+
+
+def handle_media_failed(*, media_id, purpose: str) -> None:
+    """Tell the talent their upload was refused, with the reason (notifications listens)."""
+    media = media_selectors.get_media(media_id)
+    reason = media.failure_reason if media else ""
+    if purpose == GALLERY_PURPOSE:
+        item = GalleryItem.objects.filter(media_id=media_id).select_related("talent").first()
+        if item is not None:
+            publish(GalleryUploadFailed(item.talent_id, item.talent.user_id, reason, item.pk))
+    elif purpose == AVATAR_PURPOSE:
+        submission = (
+            AvatarSubmission.objects.filter(media_id=media_id).select_related("talent").first()
+        )
+        if submission is not None:
+            publish(
+                AvatarUploadFailed(
+                    submission.talent_id, submission.talent.user_id, reason, submission.pk
+                )
+            )

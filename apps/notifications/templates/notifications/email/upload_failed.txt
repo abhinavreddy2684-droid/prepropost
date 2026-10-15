@@ -1,0 +1,10 @@
+{% autoescape off %}Hi,
+
+We could not use the {{ what }} you uploaded to Pre Pro Post.
+
+Why: {{ reason }}
+
+You can upload a different file from your profile:
+
+{{ frontend_url }}
+{% endautoescape %}

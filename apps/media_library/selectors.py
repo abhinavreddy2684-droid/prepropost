@@ -27,3 +27,7 @@ def get_ready(*, owner, purpose: str, media_id) -> Media | None:
         status=S.READY,
         discarded_at__isnull=True,
     ).first()
+
+
+def get_media(media_id) -> Media | None:
+    return Media.objects.filter(pk=media_id).first()

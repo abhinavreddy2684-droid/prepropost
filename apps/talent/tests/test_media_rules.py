@@ -203,3 +203,48 @@ class TestDatabaseConstraints:
         GalleryItemLike.objects.create(item=item, user=user)
         with pytest.raises(IntegrityError), transaction.atomic():
             GalleryItemLike.objects.create(item=item, user=user)
+
+
+class TestMediaReadyReaction:
+    def _processed(self, fake_storage, captured, title):
+        import io
+
+        from PIL import Image
+
+        item = _item(S.UPLOADED, M.PENDING_REVIEW, title=title)
+        buffer = io.BytesIO()
+        Image.new("RGB", (8, 8)).save(buffer, "JPEG")
+        fake_storage.put(item.media.object_key, buffer.getvalue(), "image/jpeg")
+        with captured(execute=True):
+            media_services.process_media(item.media_id)
+        item.refresh_from_db()
+        return item
+
+    def test_titled_item_enters_the_review_queue_when_its_file_is_ready(
+        self, fake_storage, django_capture_on_commit_callbacks
+    ):
+        item = self._processed(fake_storage, django_capture_on_commit_callbacks, "Reel")
+        assert selectors.gallery_stage(item) == "under_review"
+        assert item.submitted_at is not None
+
+    def test_untitled_item_waits_for_a_title(
+        self, fake_storage, django_capture_on_commit_callbacks
+    ):
+        item = self._processed(fake_storage, django_capture_on_commit_callbacks, "")
+        assert item.submitted_at is None
+
+    def test_renamed_executable_fails_and_frees_the_gallery_slot(
+        self, fake_storage, django_capture_on_commit_callbacks
+    ):
+        item = _item(S.UPLOADED, M.PENDING_REVIEW)
+        Media.objects.filter(pk=item.media_id).update(
+            kind="audio", declared_content_type="audio/mpeg"
+        )
+        fake_storage.put(item.media.object_key, b"MZ\x90\x00" + b"\x00" * 400, "audio/mpeg")
+        assert selectors.count_gallery_slots(item.talent_id) == 1
+        with django_capture_on_commit_callbacks(execute=True):
+            media_services.process_media(item.media_id)
+        item.refresh_from_db()
+        assert (item.media.status, item.media.failure_reason) == (S.FAILED, "unsupported_type")
+        assert selectors.gallery_stage(item) == "failed"
+        assert selectors.count_gallery_slots(item.talent_id) == 0

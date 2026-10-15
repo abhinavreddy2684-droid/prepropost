@@ -3,6 +3,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 
+from apps.accounts import selectors as account_selectors
 from apps.common.exceptions import NotFound
 from apps.recruiters import selectors as recruiter_selectors
 
@@ -36,3 +37,36 @@ def send_recruiter_review_email(profile_id: str, event_name: str) -> None:
         {"profile": profile, "frontend_url": settings.FRONTEND_URL},
     )
     send_mail(subject, body, None, [profile.user.email])
+
+
+# Plain-language reasons for refused uploads, keyed by Media.FailureReason code.
+UPLOAD_FAILURE_TEXT = {
+    "unsupported_type": "This kind of file is not supported. Use a JPEG, PNG or WebP image, "
+    "an MP3 or M4A audio file, an MP4 video or a PDF.",
+    "type_mismatch": "The file is not what its name or type says it is.",
+    "too_large": "The file is larger than the size limit.",
+    "corrupt": "The file is damaged and could not be opened.",
+    "too_many_pixels": "The image is too large in pixels. Resize it and try again.",
+    "storage_error": "Something went wrong on our side while saving it. Please try again.",
+}
+_UPLOAD_WHAT = {"gallery_upload_failed": "file", "avatar_upload_failed": "profile photo"}
+
+
+def upload_failure_text(code: str) -> str:
+    return UPLOAD_FAILURE_TEXT.get(code, "The file could not be processed.")
+
+
+@shared_task
+def send_upload_failed_email(user_id: str, event_name: str, failure_reason: str) -> None:
+    user = account_selectors.get_user(user_id)
+    if user is None:
+        return
+    body = render_to_string(
+        "notifications/email/upload_failed.txt",
+        {
+            "what": _UPLOAD_WHAT[event_name],
+            "reason": upload_failure_text(failure_reason),
+            "frontend_url": settings.FRONTEND_URL,
+        },
+    )
+    send_mail(f"We couldn't use your {_UPLOAD_WHAT[event_name]}", body, None, [user.email])
