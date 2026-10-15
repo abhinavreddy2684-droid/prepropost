@@ -1,0 +1,6 @@
+{% autoescape off %}Hi {{ talent.professional_name }},
+
+Your new profile photo is approved and now shows on your Pre Pro Post profile.
+
+{{ frontend_url }}
+{% endautoescape %}

@@ -1,0 +1,6 @@
+{% autoescape off %}Hi {{ talent.professional_name }},
+
+"{{ subject.title }}" is now live on your Pre Pro Post profile.
+
+{{ frontend_url }}
+{% endautoescape %}

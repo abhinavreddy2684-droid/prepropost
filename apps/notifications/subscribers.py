@@ -7,7 +7,12 @@ from apps.recruiters import events as recruiter_events
 from apps.talent import events as talent_events
 
 from .services import notify
-from .tasks import send_recruiter_review_email, send_upload_failed_email, upload_failure_text
+from .tasks import (
+    send_moderation_email,
+    send_recruiter_review_email,
+    send_upload_failed_email,
+    upload_failure_text,
+)
 
 
 def _payload(event) -> dict:
@@ -57,3 +62,26 @@ def _upload_failed(event):
         },
     )
     send_upload_failed_email.delay(str(event.user_id), event.name, event.failure_reason)
+
+
+@subscribe(
+    talent_events.GalleryItemApproved,
+    talent_events.GalleryItemRejected,
+    talent_events.GalleryItemHidden,
+)
+def _gallery_item_reviewed(event):
+    notify(user_id=event.user_id, kind=event.name, payload={"item_id": str(event.item_id)})
+    send_moderation_email.delay(str(event.item_id), event.name)
+
+
+@subscribe(talent_events.AvatarApproved, talent_events.AvatarRejected)
+def _avatar_reviewed(event):
+    notify(
+        user_id=event.user_id,
+        kind=event.name,
+        payload={"submission_id": str(event.submission_id)},
+    )
+    send_moderation_email.delay(str(event.submission_id), event.name)
+
+
+# GalleryItemRestored is deliberately silent: restoring is an internal correction.

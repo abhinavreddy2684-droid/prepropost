@@ -344,3 +344,12 @@ def avatar_review_queue() -> QuerySet[AvatarSubmission]:
         .select_related("talent", "media")
         .order_by("created_at", "id")
     )
+
+
+def get_gallery_item(item_id) -> GalleryItem | None:
+    """Any item, deleted or not (staff tooling and notifications)."""
+    return GalleryItem.all_objects.filter(pk=item_id).select_related("talent__user").first()
+
+
+def get_avatar_submission(submission_id) -> AvatarSubmission | None:
+    return AvatarSubmission.objects.filter(pk=submission_id).select_related("talent__user").first()

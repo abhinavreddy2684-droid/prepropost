@@ -1,0 +1,11 @@
+{% autoescape off %}Hi {{ talent.professional_name }},
+
+We could not use the profile photo you uploaded. Your previous photo (if any) is still shown.
+
+Reason: {{ reason }}{% if subject.moderation_note %}
+Note from our team: {{ subject.moderation_note }}{% endif %}
+
+You can upload a different photo:
+
+{{ frontend_url }}
+{% endautoescape %}
