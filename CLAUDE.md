@@ -15,6 +15,8 @@ make up                      # api + worker + beat + db + redis (migrates and se
 make test                    # pytest in Docker
 make fmt                     # ruff format + autofix
 make lint                    # ruff check + format check (what CI runs)
+make schema                  # regenerate openapi.yaml; commit it with any endpoint change
+make schema-check            # fail if the committed openapi.yaml is stale (what CI runs)
 
 # without Docker (needs a local Postgres)
 export DJANGO_SETTINGS_MODULE=config.settings.test DJANGO_SECRET_KEY=x
@@ -34,7 +36,10 @@ so SQLite will not work.
 2. `pytest` passes.
 3. `makemigrations --check --dry-run` reports no changes.
 4. New behaviour has tests. Bug fixes start with a failing test.
-5. OpenAPI updated for any changed endpoint (`@extend_schema`; check `/api/docs/`).
+5. Any added or changed endpoint has `@extend_schema` (check `/api/docs/`), and `make schema` has
+   regenerated `openapi.yaml`, committed in the same commit as the endpoint change. CI runs
+   `make schema-check` and fails if the committed file is stale, which blocks the PR. Never edit
+   `openapi.yaml` by hand.
 6. Docs are updated if a convention or public contract changed.
 
 Never commit with failing tests. Never skip hooks or CI.
@@ -173,7 +178,7 @@ pip install -r requirements/dev.txt
 export DJANGO_SETTINGS_MODULE=config.settings.test
 export DJANGO_SECRET_KEY=cloud-session-secret-key-at-least-32-bytes   # short keys spam JWT warnings
 export DATABASE_URL=postgres://prepropost:prepropost@localhost:5432/prepropost
-make lint && python manage.py makemigrations --check --dry-run && pytest
+make lint && make schema-check && python manage.py makemigrations --check --dry-run && pytest
 ```
 
 `CREATEDB` is required because pytest-django creates `test_prepropost`.
@@ -219,7 +224,9 @@ Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
 The React frontend is at `abhinavreddy2684-droid/PR.Pre.Pro.Post` (folder `24-crafts`). It loads
 reference data once from `GET /api/bootstrap` into Redux, refers to crafts by `slug`, and
 revalidates with the ETag. Keep API responses stable and documented through OpenAPI
-(`/api/docs/`) so a typed client can be generated.
+(`/api/docs/`) so a typed client can be generated. The committed `openapi.yaml` (OpenAPI 3.0.3,
+from drf-spectacular) is that contract: the typed client and the Postman collection are built
+from it, so it must always match the code on `main`.
 
 ## When unsure
 
