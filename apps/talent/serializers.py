@@ -5,10 +5,21 @@ reach a public response. Public output is a whitelist of fields on `PublicTalent
 `PrivateTalentSerializer` (the owner's own view) extends that whitelist explicitly.
 """
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import AvailabilityStatus, Experience, TalentCraft, TalentProfile
-from .selectors import profile_completeness
+from apps.media_library.models import Media
+from apps.media_library.serializers import SignedUploadSerializer
+
+from .models import (
+    AvailabilityStatus,
+    AvatarSubmission,
+    Experience,
+    GalleryItem,
+    TalentCraft,
+    TalentProfile,
+)
+from .selectors import GalleryStage, avatar_stage, gallery_stage, profile_completeness
 
 
 class CityOutSerializer(serializers.Serializer):
@@ -147,3 +158,133 @@ class AvailabilityWriteSerializer(serializers.Serializer):
 class AvailabilityQuerySerializer(serializers.Serializer):
     start = serializers.DateField(required=False)
     end = serializers.DateField(required=False)
+
+
+# --- gallery and avatar ------------------------------------------------------------------------
+
+
+class GalleryItemOwnerSerializer(serializers.ModelSerializer):
+    """The owner's view of an item: everything, plus the derived stage. Polled during upload."""
+
+    kind = serializers.SerializerMethodField()
+    media_id = serializers.UUIDField(read_only=True, allow_null=True)
+    craft = serializers.SlugRelatedField(slug_field="slug", read_only=True)
+    stage = serializers.SerializerMethodField()
+    failure_reason = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GalleryItem
+        fields = (
+            "id",
+            "kind",
+            "media_id",
+            "external_url",
+            "link_provider",
+            "title",
+            "description",
+            "year",
+            "craft",
+            "position",
+            "stage",
+            "failure_reason",
+            "moderation_reason",
+            "moderation_note",
+            "submitted_at",
+            "likes_count",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+    def get_kind(self, obj) -> str:
+        return "link" if obj.is_link else obj.media.kind
+
+    @extend_schema_field(serializers.ChoiceField(choices=GalleryStage.choices))
+    def get_stage(self, obj) -> str:
+        return gallery_stage(obj)
+
+    @extend_schema_field(
+        serializers.ChoiceField(choices=Media.FailureReason.choices, allow_blank=True)
+    )
+    def get_failure_reason(self, obj) -> str:
+        return "" if obj.is_link else obj.media.failure_reason
+
+
+class _GalleryFieldsSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=160, allow_blank=True, required=False)
+    description = serializers.CharField(max_length=2000, allow_blank=True, required=False)
+    year = serializers.IntegerField(allow_null=True, required=False)
+    craft = serializers.SlugField(allow_null=True, required=False, help_text="A craft slug.")
+
+
+class GalleryUploadSerializer(_GalleryFieldsSerializer):
+    content_type = serializers.CharField(max_length=100)
+    size = serializers.IntegerField(min_value=1, help_text="File size in bytes.")
+
+
+class GalleryLinkSerializer(_GalleryFieldsSerializer):
+    external_url = serializers.URLField(max_length=1000)
+    title = serializers.CharField(max_length=160)
+
+
+class GalleryItemUpdateSerializer(_GalleryFieldsSerializer):
+    position = serializers.IntegerField(min_value=0, required=False)
+
+
+class GalleryUploadResponseSerializer(serializers.Serializer):
+    item = GalleryItemOwnerSerializer()
+    media_id = serializers.UUIDField()
+    upload = SignedUploadSerializer()
+    expires_at = serializers.DateTimeField()
+
+
+class AvatarUploadSerializer(serializers.Serializer):
+    content_type = serializers.CharField(max_length=100)
+    size = serializers.IntegerField(min_value=1, help_text="File size in bytes.")
+
+
+class AvatarSubmissionOwnerSerializer(serializers.ModelSerializer):
+    media_id = serializers.UUIDField(read_only=True)
+    stage = serializers.SerializerMethodField()
+    failure_reason = serializers.CharField(source="media.failure_reason", read_only=True)
+
+    class Meta:
+        model = AvatarSubmission
+        fields = (
+            "id",
+            "media_id",
+            "stage",
+            "failure_reason",
+            "moderation_reason",
+            "moderation_note",
+            "created_at",
+        )
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.ChoiceField(choices=GalleryStage.choices))
+    def get_stage(self, obj) -> str:
+        return avatar_stage(obj)
+
+
+class ApprovedAvatarSerializer(serializers.ModelSerializer):
+    media_id = serializers.UUIDField(read_only=True)
+    approved_at = serializers.DateTimeField(source="reviewed_at", read_only=True)
+
+    class Meta:
+        model = AvatarSubmission
+        fields = ("id", "media_id", "approved_at")
+        read_only_fields = fields
+
+
+class AvatarStateSerializer(serializers.Serializer):
+    avatar = ApprovedAvatarSerializer(allow_null=True, help_text="The current approved photo.")
+    submission = AvatarSubmissionOwnerSerializer(
+        allow_null=True, help_text="A newer photo on its way: uploading, in review, or refused."
+    )
+
+
+class AvatarUploadResponseSerializer(serializers.Serializer):
+    submission = AvatarSubmissionOwnerSerializer()
+    media_id = serializers.UUIDField()
+    upload = SignedUploadSerializer()
+    expires_at = serializers.DateTimeField()

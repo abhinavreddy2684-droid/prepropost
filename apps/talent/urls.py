@@ -18,5 +18,24 @@ urlpatterns = [
         name="talent-experience",
     ),
     path("talent/me/availability", views.AvailabilityView.as_view(), name="talent-availability"),
+    path("talent/me/gallery", views.GalleryListView.as_view(), name="talent-gallery"),
+    path(
+        "talent/me/gallery/uploads",
+        views.GalleryUploadView.as_view(),
+        name="talent-gallery-uploads",
+    ),
+    path("talent/me/gallery/links", views.GalleryLinkView.as_view(), name="talent-gallery-links"),
+    path(
+        "talent/me/gallery/<uuid:pk>", views.GalleryItemView.as_view(), name="talent-gallery-item"
+    ),
+    path("talent/me/avatar", views.AvatarView.as_view(), name="talent-avatar"),
+    path(
+        "talent/me/avatar/uploads", views.AvatarUploadView.as_view(), name="talent-avatar-uploads"
+    ),
+    path(
+        "talent/me/avatar/submission",
+        views.AvatarSubmissionView.as_view(),
+        name="talent-avatar-submission",
+    ),
     path("talent/<uuid:pk>", views.PublicTalentView.as_view(), name="talent-public"),
 ]
