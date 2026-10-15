@@ -35,3 +35,24 @@ def isolated_registry():
     yield registry
     registry._enums.clear()
     registry._enums.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def fake_storage():
+    """The in-memory storage backend from the test settings, emptied for every test."""
+    from apps.media_library.storage import get_storage
+
+    storage = get_storage()
+    storage.reset()
+    return storage
+
+
+@pytest.fixture
+def isolated_media_policies():
+    """Lets a test register media policies without leaking them into other tests."""
+    from apps.media_library import policies
+
+    saved = dict(policies._policies)
+    yield policies
+    policies._policies.clear()
+    policies._policies.update(saved)

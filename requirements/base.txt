@@ -7,3 +7,4 @@ celery>=5.4
 drf-spectacular>=0.27
 gunicorn>=22.0
 djangorestframework-simplejwt>=5.3
+boto3>=1.35

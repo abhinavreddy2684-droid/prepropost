@@ -111,3 +111,12 @@ def verify_email(*, token: str, now: datetime | None = None) -> User:
     user.save(update_fields=["email_verified_at", "updated_at"])
     publish(EmailVerified(user_id=user.pk))
     return user
+
+
+def lock_user(user_id) -> User:
+    """Row-lock an account for the rest of the caller's transaction.
+
+    Other apps use this to serialise per-user quotas (e.g. media uploads in flight) without
+    touching the accounts table themselves. Must run inside `transaction.atomic`.
+    """
+    return User.objects.select_for_update().get(pk=user_id)

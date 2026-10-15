@@ -11,3 +11,5 @@ class MediaLibraryConfig(AppConfig):
         from .models import Media
 
         register_enum("media_kinds", Media.Kind)
+        register_enum("media_statuses", Media.Status)
+        register_enum("media_failure_reasons", Media.FailureReason)

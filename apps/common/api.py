@@ -9,9 +9,11 @@ from rest_framework.views import exception_handler as drf_exception_handler
 from .exceptions import (
     Conflict,
     DomainError,
+    Gone,
     NotFound,
     PermissionDenied,
     Unauthenticated,
+    Unavailable,
     ValidationFailed,
 )
 
@@ -21,6 +23,8 @@ _STATUS_BY_ERROR: dict[type[DomainError], int] = {
     PermissionDenied: status.HTTP_403_FORBIDDEN,
     NotFound: status.HTTP_404_NOT_FOUND,
     Conflict: status.HTTP_409_CONFLICT,  # also covers InvalidTransition
+    Gone: status.HTTP_410_GONE,
+    Unavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
 

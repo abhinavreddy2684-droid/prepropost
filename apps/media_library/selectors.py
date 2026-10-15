@@ -1,18 +1,29 @@
 from .models import Media
 
+S = Media.Status
 
-def public_gallery(owner_id):
-    """What a visitor may see: ready gallery items only (avatars and unmoderated media excluded)."""
+# Uploads not yet resolved: they count against a policy's `max_in_flight`.
+IN_FLIGHT_STATUSES = (S.PENDING_UPLOAD, S.UPLOADED, S.PROCESSING)
+# Media that is still on its way to, or already, usable. Owning apps count these for quotas.
+ACTIVE_STATUSES = (*IN_FLIGHT_STATUSES, S.READY)
+
+
+def count_in_flight(*, user_id, purpose: str) -> int:
     return Media.objects.filter(
-        owner_id=owner_id, purpose=Media.Purpose.GALLERY, status=Media.Status.READY
-    ).order_by("-year", "-created_at")
+        uploaded_by_id=user_id,
+        purpose=purpose,
+        status__in=IN_FLIGHT_STATUSES,
+        discarded_at__isnull=True,
+    ).count()
 
 
-def get_ready_avatar(*, owner_id, media_id) -> Media | None:
-    """An avatar image owned by `owner_id` that has finished processing (never soft-deleted)."""
+def get_ready(*, owner, purpose: str, media_id) -> Media | None:
+    """A READY, not discarded file of this purpose uploaded by `owner` (a user or a user id)."""
+    owner_id = getattr(owner, "pk", owner)
     return Media.objects.filter(
         pk=media_id,
-        owner_id=owner_id,
-        purpose=Media.Purpose.AVATAR,
-        status=Media.Status.READY,
+        uploaded_by_id=owner_id,
+        purpose=purpose,
+        status=S.READY,
+        discarded_at__isnull=True,
     ).first()

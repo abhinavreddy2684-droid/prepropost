@@ -10,6 +10,8 @@ from rest_framework.views import APIView
 
 from apps.common.exceptions import NotFound, ValidationFailed
 from apps.common.serializers import ErrorEnvelopeSerializer
+from apps.media_library.serializers import signed_upload
+from apps.media_library.views import UPLOAD_SEQUENCE
 from apps.reference import selectors as reference_selectors
 
 from . import selectors, serializers, services
@@ -129,20 +131,6 @@ class TalentCraftsView(_OwnView):
         return Response(_private(talent.pk))
 
 
-class TalentAvatarView(_OwnView):
-    @extend_schema(
-        summary="Set (or clear, with null) your profile photo",
-        request=serializers.AvatarSerializer,
-        responses={200: serializers.PrivateTalentSerializer, 400: _ERROR},
-    )
-    def put(self, request):
-        data = serializers.AvatarSerializer(data=request.data)
-        data.is_valid(raise_exception=True)
-        talent = _own(request)
-        services.set_avatar(talent=talent, media_id=data.validated_data["media_id"])
-        return Response(_private(talent.pk))
-
-
 class CompleteOnboardingView(_OwnView):
     @extend_schema(
         summary="Finish onboarding; publishes the profile the first time",
@@ -253,6 +241,182 @@ class AvailabilityView(_OwnView):
         data.is_valid(raise_exception=True)
         entries = {e["date"]: e["status"] for e in data.validated_data["entries"]}
         services.set_availability(talent=_own(request), entries=entries)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --- gallery ---------------------------------------------------------------------------------
+
+
+def _gallery_fields(validated: dict) -> dict:
+    data = dict(validated)
+    if "craft" in data:
+        slug = data["craft"]
+        data["craft"] = _crafts([slug])[slug] if slug else None
+    return data
+
+
+def _only(request, allowed) -> None:
+    """The file or link of an item never changes; say so rather than silently ignore it."""
+    unknown = sorted(set(request.data) - set(allowed))
+    if unknown:
+        raise ValidationFailed(
+            f"Fields not editable: {', '.join(unknown)}.",
+            code="field_not_editable",
+            details={"fields": unknown},
+        )
+
+
+def _owner_item(item) -> dict:
+    return serializers.GalleryItemOwnerSerializer(item).data
+
+
+class GalleryListView(_OwnView):
+    @extend_schema(
+        summary="Your gallery, every stage (deleted items excluded)",
+        description="Ordered by `position`. `stage` is one of uploading, processing, "
+        "under_review, live, hidden, failed, rejected.",
+        responses={200: serializers.GalleryItemOwnerSerializer(many=True)},
+    )
+    def get(self, request):
+        items = selectors.list_own_gallery(_own(request))
+        return Response(serializers.GalleryItemOwnerSerializer(items, many=True).data)
+
+
+class GalleryUploadView(_OwnView):
+    @extend_schema(
+        summary="Start a gallery file upload",
+        description=UPLOAD_SEQUENCE
+        + "\nImages (JPEG/PNG/WebP) up to 10 MB, audio (MP3/M4A) 20 MB, video (MP4) 200 MB, "
+        "PDF 10 MB. HEIC is not accepted. 409 `gallery_full` at the gallery limit, "
+        "409 `too_many_uploads` when too many uploads are still in progress. The item enters "
+        "review once its file is processed and it has a title.",
+        request=serializers.GalleryUploadSerializer,
+        responses={201: serializers.GalleryUploadResponseSerializer, 400: _ERROR, 409: _ERROR},
+    )
+    def post(self, request):
+        data = serializers.GalleryUploadSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        item, ticket = services.start_gallery_upload(
+            talent=_own(request), **_gallery_fields(data.validated_data)
+        )
+        payload = {
+            "item": _owner_item(selectors.get_own_gallery_item(item.talent, item.pk)),
+            "media_id": ticket.media.id,
+            "upload": signed_upload(ticket),
+            "expires_at": ticket.expires_at,
+        }
+        return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class GalleryLinkView(_OwnView):
+    @extend_schema(
+        summary="Add a link (YouTube, Vimeo, SoundCloud ...) to your gallery",
+        description="https links only. Goes straight to review. 409 `gallery_full` at the limit.",
+        request=serializers.GalleryLinkSerializer,
+        responses={201: serializers.GalleryItemOwnerSerializer, 400: _ERROR, 409: _ERROR},
+    )
+    def post(self, request):
+        data = serializers.GalleryLinkSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        item = services.add_gallery_link(
+            talent=_own(request), **_gallery_fields(data.validated_data)
+        )
+        return Response(_owner_item(item), status=status.HTTP_201_CREATED)
+
+
+class GalleryItemView(_OwnView):
+    def _item(self, request, pk):
+        item = selectors.get_own_gallery_item(_own(request), pk)
+        if item is None:
+            raise NotFound("Gallery item not found.")
+        return item
+
+    @extend_schema(
+        summary="One of your gallery items (poll this during upload)",
+        responses={200: serializers.GalleryItemOwnerSerializer, 404: _ERROR},
+    )
+    def get(self, request, pk):
+        return Response(_owner_item(self._item(request, pk)))
+
+    @extend_schema(
+        summary="Edit an item's text, craft or position",
+        description="The file and the link cannot change: delete the item and add a new one. "
+        "Edits to a live item stay live. Rejected items cannot be edited (409 `item_rejected`).",
+        request=serializers.GalleryItemUpdateSerializer,
+        responses={
+            200: serializers.GalleryItemOwnerSerializer,
+            400: _ERROR,
+            404: _ERROR,
+            409: _ERROR,
+        },
+    )
+    def patch(self, request, pk):
+        _only(request, serializers.GalleryItemUpdateSerializer().fields)
+        data = serializers.GalleryItemUpdateSerializer(data=request.data, partial=True)
+        data.is_valid(raise_exception=True)
+        talent = _own(request)
+        services.update_gallery_item(
+            talent=talent, item_id=pk, data=_gallery_fields(data.validated_data)
+        )
+        return Response(_owner_item(self._item(request, pk)))
+
+    @extend_schema(summary="Delete a gallery item", responses={204: None, 404: _ERROR})
+    def delete(self, request, pk):
+        services.delete_gallery_item(talent=_own(request), item_id=pk)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --- avatar ----------------------------------------------------------------------------------
+
+
+def _avatar_state(talent) -> dict:
+    talent = selectors.load_profile(talent.pk)
+    return serializers.AvatarStateSerializer(
+        {"avatar": talent.avatar, "submission": selectors.latest_avatar_submission(talent)}
+    ).data
+
+
+class AvatarView(_OwnView):
+    @extend_schema(
+        summary="Your approved profile photo and any newer one in progress",
+        description="The approved photo stays visible while a new one is uploaded and reviewed.",
+        responses={200: serializers.AvatarStateSerializer},
+    )
+    def get(self, request):
+        return Response(_avatar_state(_own(request)))
+
+
+class AvatarUploadView(_OwnView):
+    @extend_schema(
+        summary="Start uploading a new profile photo",
+        description=UPLOAD_SEQUENCE
+        + "\nJPEG/PNG/WebP up to 10 MB. 409 `avatar_submission_open` while another new photo "
+        "is still uploading, processing or in review (withdraw it first).",
+        request=serializers.AvatarUploadSerializer,
+        responses={201: serializers.AvatarUploadResponseSerializer, 400: _ERROR, 409: _ERROR},
+    )
+    def post(self, request):
+        data = serializers.AvatarUploadSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        submission, ticket = services.start_avatar_upload(
+            talent=_own(request), **data.validated_data
+        )
+        payload = {
+            "submission": serializers.AvatarSubmissionOwnerSerializer(submission).data,
+            "media_id": ticket.media.id,
+            "upload": signed_upload(ticket),
+            "expires_at": ticket.expires_at,
+        }
+        return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class AvatarSubmissionView(_OwnView):
+    @extend_schema(
+        summary="Withdraw the new profile photo that is uploading or in review",
+        responses={204: None, 404: _ERROR},
+    )
+    def delete(self, request):
+        services.withdraw_avatar_submission(talent=_own(request))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

@@ -32,21 +32,25 @@ common  <-  accounts, reference  <-  media_library, talent, recruiters  <-  hiri
   know they exist. Add a new reaction (email, CRM sync) without touching hiring.
 * `reference` never imports other apps: they register their enums via
   `reference.registry.register_enum(...)` in `AppConfig.ready()`.
+* `media_library` is a byte-lifecycle core that never imports talent. Talent registers media
+  policies (`talent.gallery`, `talent.avatar`) in `ready()`, calls core services
+  (`request_upload`, `discard`) and subscribes to core's generic media events.
 
 ## Cross-cutting building blocks (`apps.common`)
 
 * `models`: `BaseModel` (UUID + timestamps), `SoftDeleteModel`, `ReferenceModel`.
 * `exceptions`: `DomainError` family; mapped to HTTP once in `api.exception_handler`
   (`{"error": {"code", "message", "details"}}`).
-* `state_machine.StateMachine`: declarative transition tables, reused by offers
-  and recruiter verification (and engagements in M5).
+* `state_machine.StateMachine`: declarative transition tables, reused by offers,
+  recruiter verification and the media byte lifecycle (and engagements in M5).
 * `events`: typed in-process bus; dispatches after commit; subscriber failures are
   isolated and logged.
 
 ## Integrity is enforced in the database, not just in Python
 
 One primary craft per talent, one live offer per (project, talent, craft),
-positive amounts, ordered dates, ready media has a storage key, avatars are images.
+positive amounts, ordered dates, a failure reason exactly when media failed, a gallery item is a
+file or a link (never both), one like per user per item.
 Services give friendly errors; constraints guarantee correctness under concurrency.
 
 ## Extension points
@@ -58,6 +62,7 @@ Services give friendly errors; constraints guarantee correctness under concurren
 | New talent filter | One field on `TalentFilters` + one clause in `search_talents`. |
 | Craft-specific fields (vocal range ...) | `TalentCraft.attributes` JSON (validate per craft later). |
 | New offer transition | One row in `hiring/state_machine.py` + a service + an event. |
+| New media purpose (e.g. a recruiter logo) | A `MediaPolicy` registered in the owning app's `ready()` (numbers in settings), a model that points at `Media`, and a subscriber for the media events of that purpose. Core does not change. |
 | New reaction to offers | New `@subscribe(...)` handler in any app. |
 
 ## Auth and roles
@@ -79,7 +84,8 @@ Services give friendly errors; constraints guarantee correctness under concurren
 
 Environment via `django-environ`; settings split `base/local/test/production`.
 Tunables (`AVAILABILITY_WINDOW_DAYS`, `OFFER_DEFAULT_TTL_DAYS`, cache TTLs,
-`PLATFORM_COMMISSION_BPS`) live in `base.py`, not in code.
+`PLATFORM_COMMISSION_BPS`, media TTLs, size limits and quotas) live in `base.py`, not in code.
+Object storage is configured by `MEDIA_STORAGE_*` (see `docs/MEDIA_STORAGE.md`).
 
 ## Conscious limitations (to revisit)
 

@@ -17,6 +17,36 @@ services:
       interval: 5s
       retries: 10
 
+  # Local stand-in for S3. Credentials and bucket come from .env (see .env.example).
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MEDIA_STORAGE_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MEDIA_STORAGE_SECRET_ACCESS_KEY:-change-me-minio-secret}
+      # Server-wide CORS: exact frontend origins only (MinIO's default would be "*").
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MEDIA_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+    volumes: [miniodata:/data]
+    ports: ["9000:9000", "9001:9001"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 10
+
+  # One-shot: create the private bucket and apply bucket CORS (POST/GET, expose ETag).
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      ACCESS_KEY: ${MEDIA_STORAGE_ACCESS_KEY_ID:-minioadmin}
+      SECRET_KEY: ${MEDIA_STORAGE_SECRET_ACCESS_KEY:-change-me-minio-secret}
+      BUCKET: ${MEDIA_STORAGE_BUCKET:-prepropost-media}
+      ORIGINS: ${MEDIA_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+    entrypoint: ["/bin/sh", "/scripts/minio-init.sh"]
+    volumes: ["./scripts/minio-init.sh:/scripts/minio-init.sh:ro"]
+    restart: "no"
+
   api:
     build: { context: ., args: { REQUIREMENTS: dev } }
     command: >
@@ -29,6 +59,7 @@ services:
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
 
   worker:
     build: { context: ., args: { REQUIREMENTS: dev } }
@@ -46,3 +77,4 @@ services:
 
 volumes:
   pgdata:
+  miniodata:

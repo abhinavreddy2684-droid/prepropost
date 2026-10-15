@@ -124,7 +124,7 @@ Response shape of private profile: public fields (`id, professional_name, bio, c
 - `services.set_talent_crafts` (atomic): primary in supporting -> 400; any inactive craft -> 400; `select_for_update` on the profile row; deletes TalentCraft rows not wanted; clears `is_primary` on the rest; `bulk_create` the new ones; sets `is_primary=True` on the primary. This ordering avoids tripping the `talentcraft_one_primary` partial unique index. `talent_type` and `attributes` are never written, so they stay empty.
 - Side effect: removing a craft deletes the TalentCraft row, but `Experience.craft` still points at the Craft (not at TalentCraft), so an experience can reference a craft no longer on the profile.
 
-**PUT /api/talent/me/avatar** (`IsTalent`): `media_id` (uuid or null). `services.set_avatar` (atomic, row lock): null clears; otherwise `media_library.selectors.get_ready_avatar(owner_id=talent.user_id, media_id)`, else `ValidationFailed code=invalid_avatar`. Saves `avatar`.
+**Avatar and gallery (M2 phase 1):** `PUT /api/talent/me/avatar` was removed. The photo is now an `AvatarSubmission` set on the profile only by approval; see `GET /api/talent/me/avatar`, `POST /api/talent/me/avatar/uploads`, `DELETE /api/talent/me/avatar/submission`, and the gallery endpoints under `/api/talent/me/gallery` (OpenAPI at `/api/docs/`).
 
 **POST /api/talent/me/onboarding/complete** (`IsTalent`): `services.complete_onboarding` (atomic, lock). If `onboarding_completed_at` is None: `_require_publishable` (`selectors.profile_completeness`, blocking items from `settings.TALENT_REQUIRED_FOR_PUBLISH` = primary_craft, city) -> `ValidationFailed code=profile_incomplete details.missing`; then sets `onboarding_completed_at=now`, `is_published=True`. Idempotent on repeat (no change).
 
@@ -194,6 +194,10 @@ Selectors: `active_crafts` (`filter is_active`, `prefetch talent_types`), `activ
 ---
 
 ## Module: media (`apps/media_library`)
+
+> **Superseded by M2 phase 1.** The notes below describe the pre-M2 module. Media is now a
+> byte-lifecycle core (`models`, `policies`, `state_machine`, `services`, `storage`, `events`);
+> gallery meaning, likes and avatars live in `apps/talent`. See CLAUDE.md and ARCHITECTURE.md.
 
 No URLs, views or serializers exist. The only live link to the rest of the system is `PUT /api/talent/me/avatar`, which calls `selectors.get_ready_avatar`. Everything else is unexposed (M2).
 

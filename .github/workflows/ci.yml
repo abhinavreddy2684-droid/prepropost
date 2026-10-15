@@ -18,7 +18,26 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12", cache: pip }
       - run: pip install -r requirements/dev.txt
+      # Service containers cannot pass `server /data`, so MinIO is started as a plain container
+      # for the storage integration tests (pytest -m minio).
+      - name: Start MinIO
+        run: |
+          # MinIO no longer publishes community images on Docker Hub; try the known mirrors.
+          for image in quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z \
+                       quay.io/minio/minio:latest pgsty/minio:latest; do
+            docker pull -q "$image" && break
+          done
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+            "$image" server /data
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          docker logs minio
+          exit 1
       - run: ruff check . && ruff format --check .
       - run: python manage.py makemigrations --check --dry-run
         env: { DJANGO_SETTINGS_MODULE: config.settings.test }
       - run: pytest
+        env: { MEDIA_TEST_S3_ENDPOINT: "http://localhost:9000" }

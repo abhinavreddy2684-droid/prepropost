@@ -4,14 +4,20 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from django.conf import settings
+from django.db import models
 from django.db.models import Count, Exists, OuterRef, Q, QuerySet
 
 from apps.common.dates import years_before
+from apps.media_library.models import Media
+from apps.media_library.selectors import ACTIVE_STATUSES
 
 from .models import (
     AvailabilityOverride,
     AvailabilityStatus,
+    AvatarSubmission,
     Experience,
+    GalleryItem,
+    ModerationStatus,
     TalentCraft,
     TalentProfile,
 )
@@ -184,5 +190,131 @@ def get_public_talent(talent_id) -> TalentProfile | None:
     return (
         _with_display_relations(TalentProfile.objects.filter(is_published=True))
         .filter(pk=talent_id)
+        .first()
+    )
+
+
+# --- gallery and avatar ----------------------------------------------------------------------
+
+
+class GalleryStage(models.TextChoices):
+    """What the owner sees for an item or avatar submission, derived from both lifecycles."""
+
+    UPLOADING = "uploading", "Uploading"
+    PROCESSING = "processing", "Processing"
+    UNDER_REVIEW = "under_review", "Under review"
+    LIVE = "live", "Live"
+    HIDDEN = "hidden", "Hidden"
+    FAILED = "failed", "Failed"
+    REJECTED = "rejected", "Rejected"
+
+
+_MEDIA_STAGE = {
+    Media.Status.PENDING_UPLOAD: GalleryStage.UPLOADING,
+    Media.Status.UPLOADED: GalleryStage.PROCESSING,
+    Media.Status.PROCESSING: GalleryStage.PROCESSING,
+    Media.Status.FAILED: GalleryStage.FAILED,
+    Media.Status.EXPIRED: GalleryStage.FAILED,  # the item is removed as soon as this is seen
+}
+_REVIEW_STAGE = {
+    ModerationStatus.PENDING_REVIEW: GalleryStage.UNDER_REVIEW,
+    ModerationStatus.APPROVED: GalleryStage.LIVE,
+    ModerationStatus.HIDDEN: GalleryStage.HIDDEN,
+    ModerationStatus.REJECTED: GalleryStage.REJECTED,
+}
+
+
+def media_stage(media: Media | None, moderation_status: str) -> str:
+    if moderation_status == ModerationStatus.REJECTED:
+        return GalleryStage.REJECTED
+    if media is not None and media.status != Media.Status.READY:
+        return _MEDIA_STAGE[media.status]
+    return _REVIEW_STAGE[moderation_status]
+
+
+def gallery_stage(item: GalleryItem) -> str:
+    return media_stage(item.media, item.moderation_status)
+
+
+def is_reviewable(item: GalleryItem) -> bool:
+    """Staff can review it: not deleted, titled, and a link or READY media."""
+    return (
+        item.deleted_at is None
+        and bool(item.title.strip())
+        and (item.is_link or item.media.status == Media.Status.READY)
+    )
+
+
+def _public_items_q() -> Q:
+    """The public visibility rule, in one place: not deleted, APPROVED, and a link or READY."""
+    return Q(deleted_at__isnull=True, moderation_status=ModerationStatus.APPROVED) & (
+        Q(media__isnull=True)
+        | Q(media__status=Media.Status.READY, media__discarded_at__isnull=True)
+    )
+
+
+def public_gallery_items(talent_id) -> QuerySet[GalleryItem]:
+    """What a visitor may see of a talent's gallery."""
+    return (
+        GalleryItem.objects.filter(_public_items_q(), talent_id=talent_id)
+        .select_related("media", "craft")
+        .order_by("position", "created_at")
+    )
+
+
+def get_public_item(item_id) -> GalleryItem | None:
+    return GalleryItem.objects.filter(_public_items_q(), pk=item_id).first()
+
+
+def list_own_gallery(talent: TalentProfile) -> QuerySet[GalleryItem]:
+    """All of the owner's non-deleted items, any stage."""
+    return (
+        GalleryItem.objects.filter(talent=talent)
+        .select_related("media", "craft")
+        .order_by("position", "created_at")
+    )
+
+
+def get_own_gallery_item(talent: TalentProfile, item_id) -> GalleryItem | None:
+    return list_own_gallery(talent).filter(pk=item_id).first()
+
+
+def count_gallery_slots(talent_id) -> int:
+    """Items counted against GALLERY_MAX_ITEMS: not deleted, not rejected, and a link or media
+    that is in flight or READY. Hidden items count; failed and expired uploads do not."""
+    return (
+        GalleryItem.objects.filter(talent_id=talent_id)
+        .exclude(moderation_status=ModerationStatus.REJECTED)
+        .filter(Q(media__isnull=True) | Q(media__status__in=ACTIVE_STATUSES))
+        .count()
+    )
+
+
+def avatar_stage(submission: AvatarSubmission) -> str:
+    return media_stage(submission.media, submission.moderation_status)
+
+
+def _open_submissions(talent_id) -> QuerySet[AvatarSubmission]:
+    """Waiting on upload, processing or review: blocks a new avatar upload."""
+    return AvatarSubmission.objects.filter(
+        talent_id=talent_id, moderation_status=ModerationStatus.PENDING_REVIEW
+    ).exclude(media__status__in=[Media.Status.FAILED, Media.Status.EXPIRED])
+
+
+def get_open_avatar_submission(talent_id) -> AvatarSubmission | None:
+    return _open_submissions(talent_id).select_related("media").first()
+
+
+def latest_avatar_submission(talent: TalentProfile) -> AvatarSubmission | None:
+    """The newest submission that is not the current avatar, if it is newer than the current
+    avatar. Lets the owner follow a new photo through upload, review, failure or rejection."""
+    submissions = AvatarSubmission.objects.filter(talent=talent).select_related("media")
+    if talent.avatar_id is not None:
+        submissions = submissions.exclude(pk=talent.avatar_id).filter(
+            created_at__gt=talent.avatar.created_at
+        )
+    return (
+        submissions.exclude(moderation_status=ModerationStatus.APPROVED)
+        .order_by("-created_at")
         .first()
     )

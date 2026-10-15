@@ -4,8 +4,6 @@ from datetime import date, timedelta
 import pytest
 from django.utils import timezone
 
-from apps.media_library.models import Media
-from apps.media_library.tests.factories import MediaFactory
 from apps.reference.tests.factories import CityFactory, CraftFactory
 
 from .factories import TalentProfileFactory
@@ -184,19 +182,6 @@ class TestProfileEdits:
         response = api.put("/api/talent/me/crafts", {"primary": "nope"}, format="json")
         assert response.status_code == 400
         assert response.json()["error"]["details"]["unknown"] == ["nope"]
-
-    def test_avatar_set_and_rejected_for_others_media(self, talent_client):
-        api, talent = talent_client
-        mine = MediaFactory(
-            owner=talent.user, purpose=Media.Purpose.AVATAR, kind=Media.Kind.IMAGE, storage_key="a"
-        )
-        theirs = MediaFactory(purpose=Media.Purpose.AVATAR, kind=Media.Kind.IMAGE, storage_key="b")
-        ok = api.put("/api/talent/me/avatar", {"media_id": str(mine.pk)}, format="json")
-        assert ok.json()["avatar_id"] == str(mine.pk)
-        bad = api.put("/api/talent/me/avatar", {"media_id": str(theirs.pk)}, format="json")
-        assert (bad.status_code, _code(bad)) == (400, "invalid_avatar")
-        cleared = api.put("/api/talent/me/avatar", {"media_id": None}, format="json")
-        assert cleared.json()["avatar_id"] is None
 
 
 class TestExperience:

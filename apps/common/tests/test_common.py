@@ -7,10 +7,12 @@ from apps.common.api import exception_handler
 from apps.common.dates import age_on, years_before
 from apps.common.exceptions import (
     Conflict,
+    Gone,
     InvalidTransition,
     NotFound,
     PermissionDenied,
     Unauthenticated,
+    Unavailable,
     ValidationFailed,
 )
 from apps.common.state_machine import StateMachine
@@ -101,6 +103,8 @@ class TestExceptionHandler:
             (NotFound("x"), 404),
             (Conflict("x"), 409),
             (InvalidTransition("x"), 409),
+            (Gone("x"), 410),
+            (Unavailable("x"), 503),
         ],
     )
     def test_maps_domain_errors_to_http(self, error, status):
