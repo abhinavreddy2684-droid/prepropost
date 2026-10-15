@@ -171,6 +171,33 @@ TALENT_REQUIRED_FOR_PUBLISH = ("primary_craft", "city")
 OFFER_DEFAULT_TTL_DAYS = 7
 PLATFORM_COMMISSION_BPS = 500  # 5%; snapshotted per engagement at funding time (M5)
 
+# --- Media -----------------------------------------------------------------
+# One private S3-compatible bucket per environment: MinIO locally (ENDPOINT_URL set), AWS S3
+# ap-south-1 in staging and production (ENDPOINT_URL empty). See docs/MEDIA_STORAGE.md.
+MEDIA_STORAGE_BACKEND = env("MEDIA_STORAGE_BACKEND", default="apps.media_library.storage.S3Storage")
+MEDIA_STORAGE = {
+    "ENDPOINT_URL": env("MEDIA_STORAGE_ENDPOINT_URL", default=""),
+    "PUBLIC_ENDPOINT_URL": env("MEDIA_STORAGE_PUBLIC_ENDPOINT_URL", default=""),
+    "BUCKET": env("MEDIA_STORAGE_BUCKET", default="prepropost-media"),
+    "REGION": env("MEDIA_STORAGE_REGION", default="ap-south-1"),
+    "ACCESS_KEY_ID": env("MEDIA_STORAGE_ACCESS_KEY_ID", default=""),
+    "SECRET_ACCESS_KEY": env("MEDIA_STORAGE_SECRET_ACCESS_KEY", default=""),
+}
+# Exact browser origins allowed to POST uploads to and GET media from the bucket. Never "*".
+MEDIA_CORS_ALLOWED_ORIGINS = env.list("MEDIA_CORS_ALLOWED_ORIGINS", default=[FRONTEND_URL])
+MEDIA_UPLOAD_URL_TTL = 600  # seconds a signed upload POST stays valid
+MEDIA_PENDING_TTL = 3600  # seconds a PENDING_UPLOAD row may wait for its bytes
+MEDIA_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+MEDIA_AUDIO_MAX_BYTES = 20 * 1024 * 1024
+MEDIA_VIDEO_MAX_BYTES = 200 * 1024 * 1024
+MEDIA_PDF_MAX_BYTES = 10 * 1024 * 1024
+# Per-purpose policies (registered by the owning app) read these.
+TALENT_AVATAR_MAX_IN_FLIGHT = 2
+TALENT_AVATAR_THUMBNAIL_SIZES = (96, 400)
+TALENT_GALLERY_MAX_IN_FLIGHT = 3
+TALENT_GALLERY_THUMBNAIL_SIZES = (400,)
+GALLERY_MAX_ITEMS = 10  # live + in-flight gallery items per talent (rejected/failed don't count)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
