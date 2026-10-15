@@ -56,3 +56,13 @@ def ticket_payload(ticket) -> dict:
         "upload": signed_upload(ticket),
         "expires_at": ticket.expires_at,
     }
+
+
+class SignedUrlsSerializer(serializers.Serializer):
+    """Short-lived GET URLs. Refetch the owning resource for fresh ones after `expires_at`."""
+
+    original = serializers.URLField()
+    thumbnails = serializers.DictField(
+        child=serializers.URLField(), help_text="WebP thumbnails by longest edge in pixels."
+    )
+    expires_at = serializers.DateTimeField()

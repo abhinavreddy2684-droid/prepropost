@@ -436,3 +436,43 @@ class PublicTalentView(APIView):
         if talent is None:
             raise NotFound("Talent not found.")
         return Response(serializers.PublicTalentSerializer(talent).data)
+
+
+class PublicGalleryView(APIView):
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="A published talent's public gallery",
+        description="Approved links and approved, processed files only, by position. File URLs "
+        "are signed and short-lived (`urls.expires_at`); fetch again for fresh ones.",
+        responses={200: serializers.PublicGalleryItemSerializer(many=True), 404: _ERROR},
+    )
+    def get(self, request, pk):
+        if selectors.get_public_talent(pk) is None:
+            raise NotFound("Talent not found.")
+        items = selectors.public_gallery_items(pk)
+        return Response(serializers.PublicGalleryItemSerializer(items, many=True).data)
+
+
+class GalleryItemLikeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _state(self, item, liked: bool) -> Response:
+        return Response({"item_id": item.pk, "liked": liked, "likes_count": item.likes_count})
+
+    @extend_schema(
+        summary="Like a public gallery item (idempotent)",
+        request=None,
+        responses={200: serializers.LikeStateSerializer, 401: _ERROR, 404: _ERROR},
+    )
+    def post(self, request, pk):
+        return self._state(services.like_item(user=request.user, item_id=pk), True)
+
+    @extend_schema(
+        summary="Remove your like (idempotent)",
+        request=None,
+        responses={200: serializers.LikeStateSerializer, 401: _ERROR, 404: _ERROR},
+    )
+    def delete(self, request, pk):
+        return self._state(services.unlike_item(user=request.user, item_id=pk), False)
