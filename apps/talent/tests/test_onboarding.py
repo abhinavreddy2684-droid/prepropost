@@ -2,8 +2,6 @@ import pytest
 from django.utils import timezone
 
 from apps.common.exceptions import ValidationFailed
-from apps.media_library.models import Media
-from apps.media_library.tests.factories import MediaFactory
 from apps.reference.tests.factories import CityFactory, CraftFactory
 from apps.talent import selectors, services
 from apps.talent.models import Experience
@@ -22,16 +20,6 @@ def _make_publishable(talent):
     services.set_talent_crafts(talent=talent, primary=CraftFactory())
     talent.city = CityFactory()
     talent.save()
-
-
-def _avatar(owner, **kwargs):
-    defaults = {
-        "owner": owner,
-        "purpose": Media.Purpose.AVATAR,
-        "kind": Media.Kind.IMAGE,
-        "storage_key": "a.jpg",
-    }
-    return MediaFactory(**{**defaults, **kwargs})
 
 
 class TestCompleteness:
@@ -54,47 +42,6 @@ class TestCompleteness:
     def test_required_items_are_a_setting(self, settings):
         settings.TALENT_REQUIRED_FOR_PUBLISH = ("avatar",)
         assert selectors.profile_completeness(_talent()).blocking == ("avatar",)
-
-
-class TestSetAvatar:
-    def test_sets_and_clears(self):
-        talent = _talent()
-        media = _avatar(talent.user)
-        assert services.set_avatar(talent=talent, media_id=media.id).avatar == media
-        assert services.set_avatar(talent=talent, media_id=None).avatar is None
-
-    @pytest.mark.parametrize(
-        "overrides",
-        [
-            {"status": Media.Status.PROCESSING},
-            {"status": Media.Status.REJECTED},
-            {"purpose": Media.Purpose.GALLERY},
-        ],
-    )
-    def test_must_be_a_ready_avatar(self, overrides):
-        talent = _talent()
-        media = _avatar(talent.user, **overrides)
-        with pytest.raises(ValidationFailed) as exc:
-            services.set_avatar(talent=talent, media_id=media.id)
-        assert exc.value.code == "invalid_avatar"
-
-    def test_cannot_use_someone_elses_media(self):
-        talent = _talent()
-        with pytest.raises(ValidationFailed):
-            services.set_avatar(talent=talent, media_id=_avatar(_talent().user).id)
-
-    def test_cannot_use_deleted_media(self):
-        talent = _talent()
-        media = _avatar(talent.user)
-        media.soft_delete()
-        with pytest.raises(ValidationFailed):
-            services.set_avatar(talent=talent, media_id=media.id)
-
-    def test_unknown_media_is_rejected(self):
-        import uuid
-
-        with pytest.raises(ValidationFailed):
-            services.set_avatar(talent=_talent(), media_id=uuid.uuid4())
 
 
 class TestCompleteOnboarding:

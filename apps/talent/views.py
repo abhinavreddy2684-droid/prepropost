@@ -129,20 +129,6 @@ class TalentCraftsView(_OwnView):
         return Response(_private(talent.pk))
 
 
-class TalentAvatarView(_OwnView):
-    @extend_schema(
-        summary="Set (or clear, with null) your profile photo",
-        request=serializers.AvatarSerializer,
-        responses={200: serializers.PrivateTalentSerializer, 400: _ERROR},
-    )
-    def put(self, request):
-        data = serializers.AvatarSerializer(data=request.data)
-        data.is_valid(raise_exception=True)
-        talent = _own(request)
-        services.set_avatar(talent=talent, media_id=data.validated_data["media_id"])
-        return Response(_private(talent.pk))
-
-
 class CompleteOnboardingView(_OwnView):
     @extend_schema(
         summary="Finish onboarding; publishes the profile the first time",

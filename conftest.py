@@ -45,3 +45,14 @@ def fake_storage():
     storage = get_storage()
     storage.reset()
     return storage
+
+
+@pytest.fixture
+def isolated_media_policies():
+    """Lets a test register media policies without leaking them into other tests."""
+    from apps.media_library import policies
+
+    saved = dict(policies._policies)
+    yield policies
+    policies._policies.clear()
+    policies._policies.update(saved)

@@ -5,7 +5,6 @@ from . import views
 urlpatterns = [
     path("talent/me", views.TalentMeView.as_view(), name="talent-me"),
     path("talent/me/crafts", views.TalentCraftsView.as_view(), name="talent-crafts"),
-    path("talent/me/avatar", views.TalentAvatarView.as_view(), name="talent-avatar"),
     path(
         "talent/me/onboarding/complete",
         views.CompleteOnboardingView.as_view(),

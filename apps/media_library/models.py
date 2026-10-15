@@ -2,82 +2,99 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
-from apps.common.models import BaseModel, SoftDeleteModel
+from apps.common.models import BaseModel
 
 
-class Media(BaseModel, SoftDeleteModel):
+class Media(BaseModel):
+    """One uploaded file and its byte lifecycle. Knows nothing about galleries or avatars.
+
+    `purpose` names a registered `MediaPolicy` (e.g. "talent.gallery"); the owning app gives the
+    bytes meaning. "Discarded" is `discarded_at` being set, not a status: the owner no longer
+    needs the bytes and `purge_discarded_media` deletes them from storage.
+    """
+
     class Kind(models.TextChoices):
-        VIDEO = "video", "Video"
-        AUDIO = "audio", "Audio"
         IMAGE = "image", "Image"
+        AUDIO = "audio", "Audio"
+        VIDEO = "video", "Video"
         PDF = "pdf", "PDF"
-        LINK = "link", "Link"
-
-    class Purpose(models.TextChoices):
-        GALLERY = "gallery", "Gallery"
-        AVATAR = "avatar", "Avatar"
 
     class Status(models.TextChoices):
         PENDING_UPLOAD = "pending_upload", "Pending upload"
+        UPLOADED = "uploaded", "Uploaded"
         PROCESSING = "processing", "Processing"
         READY = "ready", "Ready"
-        REJECTED = "rejected", "Rejected"
+        FAILED = "failed", "Failed"
+        EXPIRED = "expired", "Expired"
 
-    owner = models.ForeignKey(
+    class FailureReason(models.TextChoices):
+        UNSUPPORTED_TYPE = "unsupported_type", "This file type is not supported"
+        TYPE_MISMATCH = "type_mismatch", "The file is not the type it claims to be"
+        TOO_LARGE = "too_large", "The file is too large"
+        CORRUPT = "corrupt", "The file could not be read"
+        TOO_MANY_PIXELS = "too_many_pixels", "The image has too many pixels"
+        STORAGE_ERROR = "storage_error", "The file could not be stored"
+
+    uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="media"
     )
-    purpose = models.CharField(max_length=10, choices=Purpose.choices, default=Purpose.GALLERY)
+    purpose = models.CharField(max_length=64)  # a key in the policy registry
     kind = models.CharField(max_length=10, choices=Kind.choices)
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING_UPLOAD)
 
-    title = models.CharField(max_length=160, blank=True)
-    description = models.TextField(blank=True)
-    year = models.PositiveSmallIntegerField(null=True, blank=True)
-    craft = models.ForeignKey(
-        "reference.Craft", null=True, blank=True, on_delete=models.PROTECT, related_name="+"
-    )
+    object_key = models.CharField(max_length=255, unique=True)  # "{purpose}/{id}", server-made
+    declared_content_type = models.CharField(max_length=100)
+    declared_size = models.BigIntegerField()
+    # null until the worker has sniffed the bytes (distinct from "detected nothing")
+    detected_content_type = models.CharField(max_length=100, null=True, blank=True)  # noqa: DJ001
+    actual_size = models.BigIntegerField(null=True, blank=True)
+    etag = models.CharField(max_length=128, blank=True)
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    thumbnail_keys = models.JSONField(default=dict, blank=True)  # {"400": "thumbs/{id}/400.webp"}
+    failure_reason = models.CharField(max_length=20, choices=FailureReason.choices, blank=True)
 
-    storage_key = models.CharField(max_length=512, blank=True)
-    thumbnail_key = models.CharField(max_length=512, blank=True)
-    external_url = models.URLField(max_length=1000, blank=True)
-    mime_type = models.CharField(max_length=100, blank=True)
-    size_bytes = models.BigIntegerField(null=True, blank=True)
-    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
-    metadata = models.JSONField(default=dict, blank=True)  # extension point: oEmbed, codecs ...
-
-    rejection_reason = models.CharField(max_length=255, blank=True)
-    likes_count = models.PositiveIntegerField(default=0)
+    expires_at = models.DateTimeField()  # PENDING_UPLOAD rows expire after this
+    uploaded_at = models.DateTimeField(null=True, blank=True)
+    ready_at = models.DateTimeField(null=True, blank=True)
+    discarded_at = models.DateTimeField(null=True, blank=True)
+    purged_at = models.DateTimeField(null=True, blank=True)  # bytes deleted from storage
 
     class Meta:
         verbose_name_plural = "media"
         indexes = [
-            models.Index(fields=["owner", "status"], name="media_owner_status_idx"),
-            models.Index(fields=["craft", "status"], name="media_craft_status_idx"),
+            models.Index(
+                fields=["uploaded_by", "purpose", "status"], name="media_owner_purpose_status"
+            ),
+            models.Index(fields=["status", "expires_at"], name="media_status_expires_idx"),
+            models.Index(fields=["discarded_at"], name="media_discarded_idx"),
         ]
         constraints = [
             models.CheckConstraint(
-                condition=~Q(kind="link") | Q(external_url__gt=""), name="media_link_has_url"
+                condition=Q(declared_size__gt=0), name="media_declared_size_positive"
             ),
             models.CheckConstraint(
-                condition=~Q(purpose="avatar") | Q(kind="image"), name="media_avatar_is_image"
+                condition=Q(actual_size__isnull=True) | Q(actual_size__gte=0),
+                name="media_actual_size_non_negative",
             ),
             models.CheckConstraint(
-                condition=~Q(status="ready") | Q(kind="link") | Q(storage_key__gt=""),
-                name="media_ready_has_storage_key",
+                condition=(Q(status="failed") & ~Q(failure_reason=""))
+                | (~Q(status="failed") & Q(failure_reason="")),
+                name="media_failure_reason_iff_failed",
             ),
             models.CheckConstraint(
-                condition=Q(size_bytes__isnull=True) | Q(size_bytes__gte=0),
-                name="media_size_non_negative",
+                condition=~Q(status="ready") | Q(ready_at__isnull=False),
+                name="media_ready_has_ready_at",
+            ),
+            models.CheckConstraint(
+                condition=Q(purged_at__isnull=True) | Q(discarded_at__isnull=False),
+                name="media_purged_only_if_discarded",
             ),
         ]
 
     def __str__(self) -> str:
-        return self.title or f"{self.kind}:{self.id}"
+        return f"{self.purpose}:{self.kind}:{self.id}"
 
-
-class MediaLike(BaseModel):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
-    media = models.ForeignKey(Media, on_delete=models.CASCADE, related_name="likes")
-
-    class Meta:
-        constraints = [models.UniqueConstraint(fields=["user", "media"], name="medialike_unique")]
+    @property
+    def all_object_keys(self) -> list[str]:
+        return [self.object_key, *self.thumbnail_keys.values()]

@@ -115,10 +115,6 @@ class CraftsSerializer(serializers.Serializer):
     supporting = serializers.ListField(child=serializers.SlugField(), required=False, default=list)
 
 
-class AvatarSerializer(serializers.Serializer):
-    media_id = serializers.UUIDField(allow_null=True)
-
-
 class PublishSerializer(serializers.Serializer):
     published = serializers.BooleanField()
 

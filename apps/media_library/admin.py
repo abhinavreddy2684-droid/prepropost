@@ -5,19 +5,18 @@ from .models import Media
 
 @admin.register(Media)
 class MediaAdmin(admin.ModelAdmin):
-    list_display = ("title", "kind", "purpose", "status", "owner", "created_at")
+    """Read-only: the byte lifecycle changes only through services and the worker."""
+
+    list_display = ("id", "purpose", "kind", "status", "uploaded_by", "created_at", "discarded_at")
     list_filter = ("status", "kind", "purpose")
-    search_fields = ("title", "owner__email")
-    readonly_fields = ("likes_count", "created_at", "updated_at")
-    actions = ["mark_ready", "mark_rejected"]
+    search_fields = ("id", "object_key", "uploaded_by__email")
+    raw_id_fields = ("uploaded_by",)
 
-    def get_queryset(self, request):
-        return Media.all_objects.all()
+    def get_readonly_fields(self, request, obj=None):
+        return [field.name for field in self.model._meta.fields]
 
-    @admin.action(description="Approve selected media")
-    def mark_ready(self, request, queryset):
-        queryset.update(status=Media.Status.READY, rejection_reason="")
+    def has_add_permission(self, request):
+        return False
 
-    @admin.action(description="Reject selected media")
-    def mark_rejected(self, request, queryset):
-        queryset.update(status=Media.Status.REJECTED, rejection_reason="Rejected by moderator")
+    def has_delete_permission(self, request, obj=None):
+        return False

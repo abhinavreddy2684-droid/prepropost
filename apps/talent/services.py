@@ -5,21 +5,26 @@ from datetime import date, timedelta
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from apps.common.exceptions import Conflict, NotFound, ValidationFailed
 from apps.common.text import normalize_tags
-from apps.media_library import selectors as media_selectors
 from apps.reference.models import Craft
 
 from . import selectors
 from .models import (
     AvailabilityOverride,
     AvailabilityStatus,
+    AvatarSubmission,
     Experience,
+    GalleryItem,
+    GalleryItemLike,
+    ModerationStatus,
     TalentCraft,
     TalentProfile,
 )
+from .policies import AVATAR_PURPOSE, GALLERY_PURPOSE
 
 _EDITABLE_FIELDS = {
     "full_name",
@@ -150,24 +155,6 @@ def set_availability(
             )
 
 
-@transaction.atomic
-def set_avatar(*, talent: TalentProfile, media_id=None) -> TalentProfile:
-    """Point the profile photo at one of the user's own READY avatar images (None clears it)."""
-    talent = TalentProfile.objects.select_for_update().get(pk=talent.pk)
-    if media_id is None:
-        talent.avatar = None
-    else:
-        media = media_selectors.get_ready_avatar(owner_id=talent.user_id, media_id=media_id)
-        if media is None:
-            raise ValidationFailed(
-                "Choose one of your own avatar images that has finished processing.",
-                code="invalid_avatar",
-            )
-        talent.avatar = media
-    talent.save(update_fields=["avatar", "updated_at"])
-    return talent
-
-
 def _require_publishable(talent: TalentProfile) -> None:
     completeness = selectors.profile_completeness(talent)
     if not completeness.can_publish:
@@ -259,3 +246,65 @@ def delete_experience(*, talent: TalentProfile, experience_id) -> None:
     deleted, _ = Experience.objects.filter(talent=talent, pk=experience_id).delete()
     if not deleted:
         raise NotFound("Experience not found.")
+
+
+# --- gallery likes ---------------------------------------------------------------------------
+
+
+def _public_item(item_id) -> GalleryItem:
+    item = selectors.get_public_item(item_id)
+    if item is None:
+        raise NotFound("Gallery item not found.")
+    return item
+
+
+@transaction.atomic
+def like_item(*, user, item_id) -> GalleryItem:
+    """Idempotent: liking twice leaves the counter unchanged. Only public items."""
+    item = _public_item(item_id)
+    _, created = GalleryItemLike.objects.get_or_create(item=item, user=user)
+    if created:
+        GalleryItem.objects.filter(pk=item.pk).update(likes_count=F("likes_count") + 1)
+        item.refresh_from_db(fields=["likes_count"])
+    return item
+
+
+@transaction.atomic
+def unlike_item(*, user, item_id) -> GalleryItem:
+    item = _public_item(item_id)
+    deleted, _ = GalleryItemLike.objects.filter(item=item, user=user).delete()
+    if deleted:
+        GalleryItem.objects.filter(pk=item.pk).update(likes_count=F("likes_count") - 1)
+        item.refresh_from_db(fields=["likes_count"])
+    return item
+
+
+# --- reactions to core media events ----------------------------------------------------------
+
+
+@transaction.atomic
+def handle_media_expired(*, media_id, purpose: str, now=None) -> None:
+    """Bytes never arrived (or the upload was cancelled): drop what was waiting on them.
+
+    A gallery item is soft-deleted; an open avatar submission is deleted. Other purposes are
+    not ours. Idempotent.
+    """
+    if purpose == GALLERY_PURPOSE:
+        item = GalleryItem.objects.filter(media_id=media_id).first()
+        if item is None:
+            return
+        TalentProfile.objects.select_for_update().get(pk=item.talent_id)
+        item = GalleryItem.objects.select_for_update().filter(pk=item.pk).first()
+        if item is not None:
+            item.deleted_at = now or timezone.now()
+            item.save(update_fields=["deleted_at", "updated_at"])
+    elif purpose == AVATAR_PURPOSE:
+        submission = AvatarSubmission.objects.filter(
+            media_id=media_id, moderation_status=ModerationStatus.PENDING_REVIEW
+        ).first()
+        if submission is None:
+            return
+        TalentProfile.objects.select_for_update().get(pk=submission.talent_id)
+        AvatarSubmission.objects.filter(
+            pk=submission.pk, moderation_status=ModerationStatus.PENDING_REVIEW
+        ).delete()
