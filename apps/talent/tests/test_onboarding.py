@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from django.utils import timezone
 
@@ -30,18 +32,88 @@ class TestCompleteness:
         assert result.blocking == ("primary_craft", "city")
         assert not result.can_publish
 
-    def test_percent_and_blocking_follow_what_is_filled(self):
+    def test_percent_is_weighted_and_blocking_follows_what_is_filled(self, settings):
         talent = _talent(bio="Hello", years_experience=3, genres=["drama"])
         _make_publishable(talent)
         Experience.objects.create(talent=talent, title="Editor", start_year=2020)
         result = selectors.profile_completeness(talent)
+        weights = settings.TALENT_COMPLETENESS_WEIGHTS
+        done = ("primary_craft", "city", "bio", "years_experience", "genres", "experience")
         assert result.can_publish
-        assert result.percent == round(100 * 6 / 9)
-        assert set(result.missing) == {"avatar", "date_of_birth", "gender"}
+        assert result.percent == 100 * sum(weights[i] for i in done) // sum(weights.values())
+        assert set(result.missing) == {"avatar", "gallery", "date_of_birth", "gender"}
+
+    def test_weights_are_a_setting(self, settings):
+        talent = _talent(bio="Hello")
+        settings.TALENT_COMPLETENESS_WEIGHTS = {
+            **dict.fromkeys(selectors.COMPLETENESS_ITEMS, 0),
+            "bio": 1,
+            "city": 1,
+        }
+        assert selectors.profile_completeness(talent).percent == 50
+
+    def test_full_profile_is_100(self):
+        from apps.talent.tests.factories import AvatarSubmissionFactory, link_item
+
+        talent = _talent(
+            bio="Hello",
+            years_experience=3,
+            genres=["drama"],
+            date_of_birth=date(1990, 1, 1),
+            gender="female",
+        )
+        _make_publishable(talent)
+        Experience.objects.create(talent=talent, title="Editor", start_year=2020)
+        talent.avatar = AvatarSubmissionFactory(talent=talent, moderation_status="approved")
+        talent.save()
+        link_item(talent=talent, moderation_status="approved")
+        result = selectors.profile_completeness(talent)
+        assert (result.percent, result.missing, result.next_steps) == (100, (), ())
 
     def test_required_items_are_a_setting(self, settings):
         settings.TALENT_REQUIRED_FOR_PUBLISH = ("avatar",)
         assert selectors.profile_completeness(_talent()).blocking == ("avatar",)
+
+    def test_every_item_has_a_weight_and_a_hint(self, settings):
+        assert set(settings.TALENT_COMPLETENESS_WEIGHTS) == set(selectors.COMPLETENESS_ITEMS)
+        assert all(w > 0 for w in settings.TALENT_COMPLETENESS_WEIGHTS.values())
+        assert set(selectors.COMPLETENESS_HINTS) == set(selectors.COMPLETENESS_ITEMS)
+        assert set(settings.TALENT_REQUIRED_FOR_PUBLISH) <= set(selectors.COMPLETENESS_ITEMS)
+
+    def test_next_steps_put_blocking_first_then_the_most_valuable(self):
+        steps = selectors.profile_completeness(_talent()).next_steps
+        assert [s.item for s in steps[:2]] == ["primary_craft", "city"]
+        assert all(s.blocking for s in steps[:2]) and not any(s.blocking for s in steps[2:])
+        weights = [s.weight for s in steps[2:]]
+        assert weights == sorted(weights, reverse=True)
+        assert steps[0].label == "Primary craft" and steps[0].hint
+
+
+class TestGalleryCountsWhenLive:
+    @pytest.mark.parametrize(
+        ("moderation", "counts"),
+        [("pending_review", False), ("approved", True), ("hidden", False), ("rejected", False)],
+    )
+    def test_only_a_public_gallery_item_counts(self, moderation, counts):
+        from apps.talent.tests.factories import link_item
+
+        talent = _talent()
+        link_item(talent=talent, moderation_status=moderation)
+        missing = selectors.profile_completeness(talent).missing
+        assert ("gallery" not in missing) is counts
+
+    def test_a_processing_upload_does_not_count(self):
+        from apps.media_library.models import Media
+        from apps.talent.tests.factories import GalleryItemFactory
+
+        talent = _talent()
+        GalleryItemFactory(
+            talent=talent,
+            moderation_status="approved",
+            media__status=Media.Status.PROCESSING,
+            media__ready_at=None,
+        )
+        assert "gallery" in selectors.profile_completeness(talent).missing
 
 
 class TestCompleteOnboarding:

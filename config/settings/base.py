@@ -178,8 +178,21 @@ AVAILABILITY_WINDOW_DAYS = 90
 AVAILABILITY_CARD_LOOKAHEAD_DAYS = 7
 EMAIL_VERIFICATION_TTL_HOURS = 48
 # Completeness items a talent must have before the profile can be published (see
-# apps.talent.selectors.COMPLETENESS_ITEMS for the full list that feeds the percentage).
+# apps.talent.selectors.CompletenessItem for the full list that feeds the percentage).
 TALENT_REQUIRED_FOR_PUBLISH = ("primary_craft", "city")
+# Share of the completeness percentage each item is worth. Every item must be listed.
+TALENT_COMPLETENESS_WEIGHTS = {
+    "primary_craft": 3,
+    "city": 2,
+    "avatar": 3,
+    "gallery": 3,  # at least one approved, public gallery item
+    "bio": 2,
+    "years_experience": 1,
+    "genres": 1,
+    "experience": 2,
+    "date_of_birth": 1,
+    "gender": 1,
+}
 OFFER_DEFAULT_TTL_DAYS = 7
 PLATFORM_COMMISSION_BPS = 500  # 5%; snapshotted per engagement at funding time (M5)
 

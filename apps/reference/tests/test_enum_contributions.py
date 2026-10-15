@@ -8,6 +8,7 @@ pytestmark = pytest.mark.django_db
 
 EXPECTED = {
     "availability_statuses",
+    "completeness_items",
     "gallery_stages",
     "genders",
     "media_failure_reasons",
