@@ -231,3 +231,42 @@ class TestEvents:
         with django_capture_on_commit_callbacks(execute=True), pytest.raises(InvalidTransition):
             services.approve_item(item_id=item.id, reviewer=staff)
         assert captured == []
+
+
+class TestPublicReadsFollowModeration:
+    """The visibility rule holds on every public path after each decision."""
+
+    def _visible(self, client, auth_client, item):
+        gallery = client.get(f"/api/talent/{item.talent_id}/gallery").json()
+        api, _ = auth_client()
+        liked = api.post(f"/api/gallery-items/{item.id}/like").status_code
+        return str(item.id) in [i["id"] for i in gallery], liked
+
+    def test_pending_approved_hidden_restored_rejected(self, client, auth_client, staff):
+        item = _pending()
+        assert self._visible(client, auth_client, item) == (False, 404)
+        services.approve_item(item_id=item.id, reviewer=staff)
+        assert self._visible(client, auth_client, item) == (True, 200)
+        services.hide_item(item_id=item.id, reviewer=staff, reason="other")
+        assert self._visible(client, auth_client, item) == (False, 404)
+        services.restore_item(item_id=item.id, reviewer=staff)
+        assert self._visible(client, auth_client, item) == (True, 200)
+
+        rejected = _pending(talent=item.talent)
+        services.reject_item(item_id=rejected.id, reviewer=staff, reason="other")
+        assert self._visible(client, auth_client, rejected) == (False, 404)
+
+    def test_owner_sees_moderation_outcome_and_note(self, auth_client, staff):
+        item = _pending()
+        services.reject_item(
+            item_id=item.id, reviewer=staff, reason="misleading", note="Wrong year"
+        )
+        api, _ = auth_client(item.talent.user)
+        body = api.get(f"/api/talent/me/gallery/{item.id}").json()
+        assert (body["stage"], body["moderation_reason"], body["moderation_note"]) == (
+            "rejected",
+            "misleading",
+            "Wrong year",
+        )
+        assert body["urls"] is None  # bytes discarded
+        assert "reviewed_by" not in body
