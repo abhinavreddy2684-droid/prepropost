@@ -1,0 +1,11 @@
+{% autoescape off %}Hi {{ talent.professional_name }},
+
+We could not publish "{{ subject.title }}" on your Pre Pro Post profile.
+
+Reason: {{ reason }}{% if subject.moderation_note %}
+Note from our team: {{ subject.moderation_note }}{% endif %}
+
+It no longer counts towards your gallery limit, so you can add something else:
+
+{{ frontend_url }}
+{% endautoescape %}

@@ -70,11 +70,24 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
 - **Signed GET URLs** come from `media_library.selectors.signed_urls`, which only signs. Issue
   them only for public items, to the owner, or to staff; never return a signed URL from a
   serializer that can see non-public media.
-- **Media core knows bytes, not meaning.** `media_library` owns upload, confirm, processing and
-  purge; it never imports talent. Owning apps register a `MediaPolicy` per purpose in `ready()`
-  (`media_library.policies.register_policy`), tell core when bytes are no longer needed
-  (`services.discard`), and subscribe to `media_ready` / `media_failed` / `media_expired`, ignoring
-  purposes that are not theirs. Only `media_library/storage.py` imports boto3.
+- **Media has three layers.** *Core* (`media_library`) owns bytes and their lifecycle (upload,
+  confirm, processing, purge); it never imports an owning app and has no moderation. *Policy*
+  (`media_library.policies`) is per-purpose data only: types, size per type, in-flight cap,
+  thumbnail sizes, metadata stripping, with numbers read from settings. *Owning apps* (today
+  `talent`) own meaning: items, links, moderation, likes and their own quotas. Owners tell core
+  when bytes are no longer needed (`services.discard`) and subscribe to `media_ready` /
+  `media_failed` / `media_expired`, ignoring purposes that are not theirs. Only
+  `media_library/storage.py` imports boto3.
+- **Registering a new media purpose** (e.g. `recruiters.logo`): in the owning app, build a
+  `MediaPolicy` from settings and `register_policy(...)` it in `AppConfig.ready()`; add a model
+  that points at `Media` (OneToOne); call `media_library.services.request_upload` from your own
+  service (lock your profile row first); subscribe to the media events for your purpose; and
+  decide your own visibility and moderation rules. Core does not change.
+- **Moderation** (talent): gallery items `PENDING_REVIEW -> APPROVED | REJECTED`,
+  `APPROVED -> HIDDEN -> APPROVED`; avatars `PENDING_REVIEW -> APPROVED | REJECTED`. REJECTED is
+  final. Only staff, only through `talent.services` (`approve_item`, `reject_item`, `hide_item`,
+  `restore_item`, `approve_avatar`, `reject_avatar`); reject and hide need a reason. The admin
+  review queues call these services; no admin code writes a status.
 - **Cross-module reactions use events** (`apps.common.events.publish`/`subscribe`). Events carry
   plain ids, never model instances, and are dispatched after commit.
 - **Reference data (crafts, states, cities) lives only in the database.** Do not hardcode lists.
@@ -183,8 +196,9 @@ Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
   (MinIO locally, see `docs/MEDIA_STORAGE.md`), pre-signed upload + confirm/cancel/upload-url,
   gallery items, links, avatar submissions, both quotas, expiry and purge jobs. Phase 2 done
   (`feat/m2-media-processing`): `process_media` worker (type sniffing, metadata stripping,
-  thumbnails), refused-upload notifications, signed GET URLs, public gallery and likes. Next:
-  phase 3 (moderation services, admin queue, moderation notifications).
+  thumbnails), refused-upload notifications, signed GET URLs, public gallery and likes. Phase 3
+  done (`feat/m2-media-moderation`): moderation services and events, admin review queues, email
+  and in-app notices. M2 is complete.
 - M3-M4 are partly built below the API: `search_talents`, and the hiring services, events and
   notifications exist, but have no endpoints yet (see `docs/CODE_WALKTHROUGH.md` section 7). M3:
   search endpoints (advanced ranking deferred). M4: project and offer endpoints plus an offers

@@ -294,3 +294,21 @@ class AvatarSubmission(BaseModel):
                 name="avatar_submission_status_valid",
             ),
         ]
+
+
+class GalleryReviewItem(GalleryItem):
+    """Admin-only view of the gallery review queue (see `selectors.gallery_review_queue`)."""
+
+    class Meta:
+        proxy = True
+        verbose_name = "gallery item awaiting review"
+        verbose_name_plural = "gallery review queue"
+
+
+class AvatarReviewItem(AvatarSubmission):
+    """Admin-only view of the avatar review queue (see `selectors.avatar_review_queue`)."""
+
+    class Meta:
+        proxy = True
+        verbose_name = "profile photo awaiting review"
+        verbose_name_plural = "profile photo review queue"

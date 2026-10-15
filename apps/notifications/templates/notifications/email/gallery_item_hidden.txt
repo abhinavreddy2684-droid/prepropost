@@ -1,0 +1,11 @@
+{% autoescape off %}Hi {{ talent.professional_name }},
+
+We have taken "{{ subject.title }}" off your public Pre Pro Post profile.
+
+Reason: {{ reason }}{% if subject.moderation_note %}
+Note from our team: {{ subject.moderation_note }}{% endif %}
+
+Reply to this email if you think this is a mistake.
+
+{{ frontend_url }}
+{% endautoescape %}

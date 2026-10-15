@@ -28,11 +28,14 @@ common  <-  accounts, reference  <-  media_library, talent, recruiters  <-  hiri
 * `hiring` asks `recruiters.selectors.is_verified_recruiter` and
   `talent.selectors.has_craft` - it never queries their tables.
 * `notifications` also subscribes to `recruiters.events` (review outcome: in-app + email) and
-  `talent.events` (refused uploads: in-app + email).
+  `talent.events` (refused uploads and moderation decisions: in-app + email; restoring a hidden
+  item is silent).
 * `notifications` and `analytics` subscribe to `hiring.events`; `hiring` does not
   know they exist. Add a new reaction (email, CRM sync) without touching hiring.
 * `reference` never imports other apps: they register their enums via
   `reference.registry.register_enum(...)` in `AppConfig.ready()`.
+* Media is three layers: **core** (`media_library`, bytes only), **policy** (per-purpose data
+  registered by the owner) and the **owning app** (talent: items, moderation, likes, quotas).
 * `media_library` is a byte-lifecycle core that never imports talent. Talent registers media
   policies (`talent.gallery`, `talent.avatar`) in `ready()`, calls core services
   (`request_upload`, `discard`) and subscribes to core's generic media events. Core's Celery
@@ -45,7 +48,8 @@ common  <-  accounts, reference  <-  media_library, talent, recruiters  <-  hiri
 * `exceptions`: `DomainError` family; mapped to HTTP once in `api.exception_handler`
   (`{"error": {"code", "message", "details"}}`).
 * `state_machine.StateMachine`: declarative transition tables, reused by offers,
-  recruiter verification and the media byte lifecycle (and engagements in M5).
+  recruiter verification, the media byte lifecycle and gallery/avatar moderation (and
+  engagements in M5).
 * `events`: typed in-process bus; dispatches after commit; subscriber failures are
   isolated and logged.
 
@@ -67,6 +71,14 @@ Services give friendly errors; constraints guarantee correctness under concurren
 | New offer transition | One row in `hiring/state_machine.py` + a service + an event. |
 | New media purpose (e.g. a recruiter logo) | A `MediaPolicy` registered in the owning app's `ready()` (numbers in settings), a model that points at `Media`, and a subscriber for the media events of that purpose. Core does not change. |
 | New reaction to offers | New `@subscribe(...)` handler in any app. |
+
+## Media visibility and locking
+
+* An item is public only if it is not deleted, APPROVED, and a link or READY media
+  (`talent.selectors._public_items_q`). Every public read goes through it; signed GET URLs are
+  issued only for public items, to the owner, or to staff.
+* Lock order: TalentProfile, then User (core's in-flight count), then the item or submission,
+  then Media. Never lock a profile after a Media row.
 
 ## Auth and roles
 

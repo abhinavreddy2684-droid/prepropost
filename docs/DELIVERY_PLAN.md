@@ -1,6 +1,6 @@
 # Pre Pro Post: backend delivery plan (MVP-A and MVP-B)
 
-**Status:** foundation v0.1.0, M1.1 to M1.4 done (including the M1.4 follow-up); M1.5 next.
+**Status:** foundation v0.1.0, M1.1 to M1.4 done (including the M1.4 follow-up), M2 media done; M1.5 next.
 
 ## Principles
 
@@ -16,8 +16,10 @@
 - **M1 Identity and profiles:** 1.1 auth + email verification (done), 1.2 crafts and locations
   (done), 1.3 talent profile (done), 1.4 recruiter profile and verification (done), 1.5 profile
   completeness (remaining).
-- **M2 Media:** 2.1 pre-signed upload and confirm, 2.2 validation and quotas, 2.3 thumbnails,
-  2.4 links and craft tagging, 2.5 moderation. Models and likes exist; the upload flow does not.
+- **M2 Media (done):** 2.1 pre-signed upload and confirm, 2.2 validation and quotas, 2.3
+  thumbnails, 2.4 links and craft tagging, 2.5 moderation. Debt: no transcoding, poster frames,
+  PDF thumbnails, non-image metadata stripping or virus scanning; stuck processing is only
+  logged.
 - **M3 Discovery:** 3.1 filtered list, 3.2 text search and cursor paging, 3.3 talent detail.
   Search logic exists in selectors; endpoints do not. Shortlist is deferred.
 - **M4 Projects and offers:** 4.1 projects, 4.2 offers, 4.3 accept/decline/expiry,

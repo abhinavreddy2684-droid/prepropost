@@ -6,6 +6,8 @@ from django.template.loader import render_to_string
 from apps.accounts import selectors as account_selectors
 from apps.common.exceptions import NotFound
 from apps.recruiters import selectors as recruiter_selectors
+from apps.talent import selectors as talent_selectors
+from apps.talent.models import ModerationReason
 
 _REVIEW_EMAILS = {
     # event name: (status the profile must still be in, subject)
@@ -70,3 +72,37 @@ def send_upload_failed_email(user_id: str, event_name: str, failure_reason: str)
         },
     )
     send_mail(f"We couldn't use your {_UPLOAD_WHAT[event_name]}", body, None, [user.email])
+
+
+_MODERATION_EMAILS = {
+    # event name: (status the item/submission must still be in, subject)
+    "gallery_item_approved": ("approved", "Your work is live on Pre Pro Post"),
+    "gallery_item_rejected": ("rejected", "We couldn't publish an item from your gallery"),
+    "gallery_item_hidden": ("hidden", "An item was taken off your Pre Pro Post profile"),
+    "avatar_approved": ("approved", "Your new profile photo is live"),
+    "avatar_rejected": ("rejected", "We couldn't use your new profile photo"),
+}
+
+
+@shared_task
+def send_moderation_email(subject_id: str, event_name: str) -> None:
+    """Email a moderation decision. Re-reads the item or submission at send time and skips the
+    mail if the decision has moved on (e.g. hidden then restored before this ran)."""
+    expected_status, mail_subject = _MODERATION_EMAILS[event_name]
+    if event_name.startswith("avatar_"):
+        subject = talent_selectors.get_avatar_submission(subject_id)
+    else:
+        subject = talent_selectors.get_gallery_item(subject_id)
+    if subject is None or subject.moderation_status != expected_status:
+        return
+    reason = ModerationReason(subject.moderation_reason).label if subject.moderation_reason else ""
+    body = render_to_string(
+        f"notifications/email/{event_name}.txt",
+        {
+            "talent": subject.talent,
+            "subject": subject,
+            "reason": reason,
+            "frontend_url": settings.FRONTEND_URL,
+        },
+    )
+    send_mail(mail_subject, body, None, [subject.talent.user.email])
