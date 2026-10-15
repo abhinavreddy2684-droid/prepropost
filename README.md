@@ -28,4 +28,5 @@ set `DATABASE_URL` and `DJANGO_SECRET_KEY`, then `python manage.py migrate && py
 * Recruiter: `GET/POST/PATCH /api/recruiters/me`, `POST /api/recruiters/me/submit` (needs a
   verified email). Staff review: `GET /api/admin/recruiters?status=pending`,
   `POST /api/admin/recruiters/<id>/{approve,reject}`; Django admin has matching actions.
-* `GET /api/docs/`: OpenAPI UI
+* `GET /api/docs/`: OpenAPI UI. The spec is also committed as `openapi.yaml`; regenerate it with
+  `make schema` whenever an endpoint changes (CI checks it with `make schema-check`).
