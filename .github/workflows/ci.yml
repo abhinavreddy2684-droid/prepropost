@@ -22,9 +22,14 @@ jobs:
       # for the storage integration tests (pytest -m minio).
       - name: Start MinIO
         run: |
+          # MinIO no longer publishes community images on Docker Hub; try the known mirrors.
+          for image in quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z \
+                       quay.io/minio/minio:latest pgsty/minio:latest; do
+            docker pull -q "$image" && break
+          done
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+            "$image" server /data
           for i in $(seq 1 30); do
             curl -fsS http://localhost:9000/minio/health/live && exit 0
             sleep 1
