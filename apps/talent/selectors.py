@@ -318,3 +318,29 @@ def latest_avatar_submission(talent: TalentProfile) -> AvatarSubmission | None:
         .order_by("-created_at")
         .first()
     )
+
+
+def gallery_review_queue() -> QuerySet[GalleryItem]:
+    """Items waiting on staff: PENDING_REVIEW and submitted (so reviewable when submitted),
+    oldest first. Items deleted or whose file failed since are left out."""
+    return (
+        GalleryItem.objects.filter(
+            moderation_status=ModerationStatus.PENDING_REVIEW, submitted_at__isnull=False
+        )
+        .filter(Q(media__isnull=True) | Q(media__status=Media.Status.READY))
+        .select_related("talent", "media", "craft")
+        .order_by("submitted_at", "id")
+    )
+
+
+def avatar_review_queue() -> QuerySet[AvatarSubmission]:
+    """Submissions whose photo is READY and still pending review, oldest first."""
+    return (
+        AvatarSubmission.objects.filter(
+            moderation_status=ModerationStatus.PENDING_REVIEW,
+            media__status=Media.Status.READY,
+            media__discarded_at__isnull=True,
+        )
+        .select_related("talent", "media")
+        .order_by("created_at", "id")
+    )

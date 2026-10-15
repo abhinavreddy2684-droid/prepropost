@@ -12,7 +12,7 @@ from django.db.models import F, Max
 from django.utils import timezone
 
 from apps.common.events import publish
-from apps.common.exceptions import Conflict, NotFound, ValidationFailed
+from apps.common.exceptions import Conflict, NotFound, PermissionDenied, ValidationFailed
 from apps.common.text import normalize_tags
 from apps.media_library import selectors as media_selectors
 from apps.media_library import services as media_services
@@ -21,7 +21,16 @@ from apps.media_library.services import UploadTicket
 from apps.reference.models import Craft
 
 from . import selectors
-from .events import AvatarUploadFailed, GalleryUploadFailed
+from .events import (
+    AvatarApproved,
+    AvatarRejected,
+    AvatarUploadFailed,
+    GalleryItemApproved,
+    GalleryItemHidden,
+    GalleryItemRejected,
+    GalleryItemRestored,
+    GalleryUploadFailed,
+)
 from .models import (
     AvailabilityOverride,
     AvailabilityStatus,
@@ -30,11 +39,13 @@ from .models import (
     GalleryItem,
     GalleryItemLike,
     LinkProvider,
+    ModerationReason,
     ModerationStatus,
     TalentCraft,
     TalentProfile,
 )
 from .policies import AVATAR_PURPOSE, GALLERY_PURPOSE
+from .state_machine import AVATAR_MODERATION, GALLERY_MODERATION
 
 _EDITABLE_FIELDS = {
     "full_name",
@@ -558,3 +569,175 @@ def handle_media_failed(*, media_id, purpose: str) -> None:
                     submission.talent_id, submission.talent.user_id, reason, submission.pk
                 )
             )
+
+
+# --- moderation (staff) ----------------------------------------------------------------------
+#
+# Same lock order as everywhere: TalentProfile, then the item / submission, then Media (discard).
+
+_MAX_MODERATION_NOTE = 1000
+
+
+def _require_staff(user) -> None:
+    if not getattr(user, "is_staff", False):
+        raise PermissionDenied("Only staff can moderate media.")
+
+
+def _clean_reason(reason: str, note: str) -> tuple[str, str]:
+    """A reason code is required wherever content is refused or taken down."""
+    if reason not in ModerationReason.values:
+        raise ValidationFailed(
+            "Choose a moderation reason.",
+            code="reason_required",
+            details={"field": "reason", "allowed": list(ModerationReason.values)},
+        )
+    note = (note or "").strip()
+    if len(note) > _MAX_MODERATION_NOTE:
+        raise ValidationFailed(
+            f"The note must be at most {_MAX_MODERATION_NOTE} characters.",
+            details={"field": "note"},
+        )
+    return reason, note
+
+
+def _lock_item_for_review(item_id) -> GalleryItem:
+    """Locks the talent row, then the item. Staff may act on any item, including deleted ones."""
+    found = GalleryItem.all_objects.filter(pk=item_id).values_list("talent_id", flat=True).first()
+    if found is None:
+        raise NotFound("Gallery item not found.")
+    TalentProfile.objects.select_for_update().get(pk=found)
+    return GalleryItem.all_objects.select_for_update().select_related("talent").get(pk=item_id)
+
+
+def _review_item(item: GalleryItem, event: str, reviewer, now, reason="", note="") -> None:
+    item.moderation_status = GALLERY_MODERATION.next_state(item.moderation_status, event)
+    item.moderation_reason, item.moderation_note = reason, note
+    item.reviewed_by, item.reviewed_at = reviewer, now or timezone.now()
+    item.save(
+        update_fields=[
+            "moderation_status",
+            "moderation_reason",
+            "moderation_note",
+            "reviewed_by",
+            "reviewed_at",
+            "updated_at",
+        ]
+    )
+
+
+def _item_event(event_type, item: GalleryItem, reviewer) -> None:
+    publish(event_type(item.pk, item.talent_id, item.talent.user_id, reviewer.pk))
+
+
+@transaction.atomic
+def approve_item(*, item_id, reviewer, now=None) -> GalleryItem:
+    """Make an item public. Only reviewable items: not deleted, titled, link or READY media."""
+    _require_staff(reviewer)
+    item = _lock_item_for_review(item_id)
+    if item.moderation_status == ModerationStatus.PENDING_REVIEW and not selectors.is_reviewable(
+        item
+    ):
+        raise Conflict(
+            "This item cannot be reviewed yet: it needs a title and a processed file.",
+            code="not_reviewable",
+        )
+    _review_item(item, "approve", reviewer, now)
+    _item_event(GalleryItemApproved, item, reviewer)
+    return item
+
+
+@transaction.atomic
+def reject_item(*, item_id, reviewer, reason: str, note: str = "", now=None) -> GalleryItem:
+    """Final. The row stays for audit; its bytes are discarded and purged, freeing the slot."""
+    _require_staff(reviewer)
+    reason, note = _clean_reason(reason, note)
+    item = _lock_item_for_review(item_id)
+    _review_item(item, "reject", reviewer, now, reason, note)
+    if item.media_id is not None:
+        media_services.discard(item.media, now=now)
+    _item_event(GalleryItemRejected, item, reviewer)
+    return item
+
+
+@transaction.atomic
+def hide_item(*, item_id, reviewer, reason: str, note: str = "", now=None) -> GalleryItem:
+    """Take a live item down. Its bytes are kept so it can be restored."""
+    _require_staff(reviewer)
+    reason, note = _clean_reason(reason, note)
+    item = _lock_item_for_review(item_id)
+    _review_item(item, "hide", reviewer, now, reason, note)
+    _item_event(GalleryItemHidden, item, reviewer)
+    return item
+
+
+@transaction.atomic
+def restore_item(*, item_id, reviewer, now=None) -> GalleryItem:
+    _require_staff(reviewer)
+    item = _lock_item_for_review(item_id)
+    _review_item(item, "restore", reviewer, now)
+    _item_event(GalleryItemRestored, item, reviewer)
+    return item
+
+
+def _lock_submission_for_review(submission_id) -> tuple[TalentProfile, AvatarSubmission]:
+    talent_id = (
+        AvatarSubmission.objects.filter(pk=submission_id)
+        .values_list("talent_id", flat=True)
+        .first()
+    )
+    if talent_id is None:
+        raise NotFound("Avatar submission not found.")
+    talent = TalentProfile.objects.select_for_update().get(pk=talent_id)
+    return talent, AvatarSubmission.objects.select_for_update().get(pk=submission_id)
+
+
+def _review_submission(submission, event, reviewer, now, reason="", note="") -> None:
+    submission.moderation_status = AVATAR_MODERATION.next_state(submission.moderation_status, event)
+    submission.moderation_reason, submission.moderation_note = reason, note
+    submission.reviewed_by, submission.reviewed_at = reviewer, now or timezone.now()
+    submission.save(
+        update_fields=[
+            "moderation_status",
+            "moderation_reason",
+            "moderation_note",
+            "reviewed_by",
+            "reviewed_at",
+            "updated_at",
+        ]
+    )
+
+
+@transaction.atomic
+def approve_avatar(*, submission_id, reviewer, now=None) -> AvatarSubmission:
+    """Make the submission the profile photo and discard the previous photo's bytes."""
+    _require_staff(reviewer)
+    talent, submission = _lock_submission_for_review(submission_id)
+    AVATAR_MODERATION.next_state(submission.moderation_status, "approve")  # refuse early
+    media = media_selectors.get_ready(
+        owner=talent.user_id, purpose=AVATAR_PURPOSE, media_id=submission.media_id
+    )
+    if media is None:
+        raise Conflict(
+            "This photo cannot be reviewed yet: it has not finished processing.",
+            code="not_reviewable",
+        )
+    _review_submission(submission, "approve", reviewer, now)
+    previous = talent.avatar
+    talent.avatar = submission
+    talent.save(update_fields=["avatar", "updated_at"])
+    if previous is not None:
+        media_services.discard(previous.media, now=now)
+    publish(AvatarApproved(submission.pk, talent.pk, talent.user_id, reviewer.pk))
+    return submission
+
+
+@transaction.atomic
+def reject_avatar(*, submission_id, reviewer, reason: str, note: str = "", now=None):
+    """Final. The current photo (if any) stays; the refused photo's bytes are discarded."""
+    _require_staff(reviewer)
+    reason, note = _clean_reason(reason, note)
+    talent, submission = _lock_submission_for_review(submission_id)
+    _review_submission(submission, "reject", reviewer, now, reason, note)
+    media_services.discard(submission.media, now=now)
+    publish(AvatarRejected(submission.pk, talent.pk, talent.user_id, reviewer.pk))
+    return submission
