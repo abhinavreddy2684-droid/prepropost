@@ -95,6 +95,8 @@ class TalentMeView(APIView):
 
     @extend_schema(
         summary="Update your profile (send only the fields to change)",
+        description="On a published profile, removing an item required for publishing (e.g. "
+        "clearing `city_id`) is refused with 400 `profile_incomplete`; unpublish first.",
         request=serializers.TalentUpdateSerializer,
         responses={200: serializers.PrivateTalentSerializer, 400: _ERROR},
     )
@@ -201,7 +203,12 @@ class ExperienceDetailView(_OwnView):
         )
         return Response(serializers.ExperienceSerializer(experience).data)
 
-    @extend_schema(summary="Delete an experience entry", responses={204: None, 404: _ERROR})
+    @extend_schema(
+        summary="Delete an experience entry",
+        description="400 `profile_incomplete` if a published profile requires experience and "
+        "this is the last entry.",
+        responses={204: None, 400: _ERROR, 404: _ERROR},
+    )
     def delete(self, request, pk):
         services.delete_experience(talent=_own(request), experience_id=pk)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -360,7 +367,12 @@ class GalleryItemView(_OwnView):
         )
         return Response(_owner_item(self._item(request, pk)))
 
-    @extend_schema(summary="Delete a gallery item", responses={204: None, 404: _ERROR})
+    @extend_schema(
+        summary="Delete a gallery item",
+        description="400 `profile_incomplete` if a published profile requires a live gallery "
+        "item and this is the last one.",
+        responses={204: None, 400: _ERROR, 404: _ERROR},
+    )
     def delete(self, request, pk):
         services.delete_gallery_item(talent=_own(request), item_id=pk)
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -20,7 +20,13 @@ from .models import (
     TalentCraft,
     TalentProfile,
 )
-from .selectors import GalleryStage, avatar_stage, gallery_stage, profile_completeness
+from .selectors import (
+    CompletenessItem,
+    GalleryStage,
+    avatar_stage,
+    gallery_stage,
+    profile_completeness,
+)
 
 
 class CityOutSerializer(serializers.Serializer):
@@ -81,11 +87,22 @@ class PublicTalentSerializer(serializers.ModelSerializer):
         return _urls(obj.avatar.media) if obj.avatar_id else None
 
 
+class NextStepSerializer(serializers.Serializer):
+    item = serializers.ChoiceField(choices=CompletenessItem.choices)
+    label = serializers.CharField()
+    hint = serializers.CharField(help_text="What to do next, ready to show to the talent.")
+    weight = serializers.IntegerField(help_text="Share of the percentage this item is worth.")
+    blocking = serializers.BooleanField(help_text="Required before the profile can publish.")
+
+
 class CompletenessSerializer(serializers.Serializer):
-    percent = serializers.IntegerField()
+    percent = serializers.IntegerField(help_text="Weighted; 100 when nothing is missing.")
     missing = serializers.ListField(child=serializers.CharField())
     blocking = serializers.ListField(child=serializers.CharField())
     can_publish = serializers.BooleanField()
+    next_steps = NextStepSerializer(
+        many=True, help_text="Missing items, blocking ones first, then the most valuable."
+    )
 
 
 class PrivateTalentSerializer(PublicTalentSerializer):

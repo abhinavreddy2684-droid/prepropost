@@ -111,6 +111,9 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
 - **Availability:** only `tentative` and `unavailable` days are stored; "available" is implicit. A
   talent card shows Unavailable only if all of the next 7 days are unavailable.
 - **Exactly one primary craft per talent** (enforced by a partial unique index).
+- **A published profile stays publishable.** Talent services refuse (400 `profile_incomplete`)
+  any edit that newly removes an item in `TALENT_REQUIRED_FOR_PUBLISH`; unpublish first. Call
+  `_blocking_before` / `_require_still_publishable` in any new service that can remove one.
 - **Gallery visibility:** an item is public only if `deleted_at` is null, `moderation_status` is
   `APPROVED`, and it is a link or its media is `READY`. The rule lives in
   `talent.selectors._public_items_q`; every public read (gallery, likes, M3 talent detail) goes
@@ -191,7 +194,11 @@ Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
   to pending; `RecruiterVerified`/`RecruiterRejected` events drive an in-app notification and an
   email. Revoke/suspend is not built (M6.4). Talent services got the same hardening (row lock on
   edit, text caps, lifecycle fields read-only in admin).
-- **Open (M1.5): profile completeness.** This is the next MVP-A task.
+- Done (M1.5): profile completeness. Ten items (`talent.selectors.CompletenessItem`) weighted
+  by `TALENT_COMPLETENESS_WEIGHTS`; `gallery` counts only once an item is public. The private
+  profile returns `percent`, `missing`, `blocking`, `can_publish` and `next_steps` (label, hint,
+  weight, blocking). Publishing still needs only `TALENT_REQUIRED_FOR_PUBLISH` (primary craft,
+  city).
 - M2 media, phase 1 done (`feat/m2-media-core`): byte-lifecycle core with policies, S3 adapter
   (MinIO locally, see `docs/MEDIA_STORAGE.md`), pre-signed upload + confirm/cancel/upload-url,
   gallery items, links, avatar submissions, both quotas, expiry and purge jobs. Phase 2 done

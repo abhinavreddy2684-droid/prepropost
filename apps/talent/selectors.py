@@ -115,19 +115,47 @@ def has_talent_profile(user) -> bool:
     return get_talent_profile(user) is not None
 
 
-# Every item is worth the same; a talent is "complete" at 100%. Which of these block publishing
-# is a setting (TALENT_REQUIRED_FOR_PUBLISH), so product can tune it without a code change.
-COMPLETENESS_ITEMS = (
-    "primary_craft",
-    "city",
-    "avatar",
-    "bio",
-    "years_experience",
-    "genres",
-    "experience",
-    "date_of_birth",
-    "gender",
-)
+class CompletenessItem(models.TextChoices):
+    """What makes a profile complete. Weights are a setting (TALENT_COMPLETENESS_WEIGHTS) and so
+    is which items block publishing (TALENT_REQUIRED_FOR_PUBLISH), so product can tune both
+    without a code change. Labels are what the frontend shows; hints say what to do next."""
+
+    PRIMARY_CRAFT = "primary_craft", "Primary craft"
+    CITY = "city", "City"
+    AVATAR = "avatar", "Profile photo"
+    GALLERY = "gallery", "Portfolio"
+    BIO = "bio", "Bio"
+    YEARS_EXPERIENCE = "years_experience", "Years of experience"
+    GENRES = "genres", "Genres"
+    EXPERIENCE = "experience", "Work history"
+    DATE_OF_BIRTH = "date_of_birth", "Date of birth"
+    GENDER = "gender", "Gender"
+
+
+COMPLETENESS_ITEMS = tuple(CompletenessItem.values)
+
+COMPLETENESS_HINTS = {
+    CompletenessItem.PRIMARY_CRAFT: "Choose the craft you are best known for.",
+    CompletenessItem.CITY: "Add the city you work from.",
+    CompletenessItem.AVATAR: "Upload a clear profile photo. It shows once our team approves it.",
+    CompletenessItem.GALLERY: "Add your work: a showreel, photos, audio or a link. It counts "
+    "once our team approves it.",
+    CompletenessItem.BIO: "Write a short bio about your work.",
+    CompletenessItem.YEARS_EXPERIENCE: "Say how many years you have worked in film.",
+    CompletenessItem.GENRES: "Pick the genres you work in.",
+    CompletenessItem.EXPERIENCE: "Add a project you have worked on.",
+    CompletenessItem.DATE_OF_BIRTH: "Add your date of birth (never shown publicly).",
+    CompletenessItem.GENDER: "Add your gender (never shown publicly).",
+}
+
+
+@dataclass(frozen=True)
+class NextStep:
+    item: str
+    label: str
+    hint: str
+    weight: int
+    blocking: bool
 
 
 @dataclass(frozen=True)
@@ -135,17 +163,23 @@ class Completeness:
     percent: int
     missing: tuple[str, ...]
     blocking: tuple[str, ...]  # missing items that prevent publishing
+    next_steps: tuple[NextStep, ...] = ()  # missing items, blocking first, then by weight
 
     @property
     def can_publish(self) -> bool:
         return not self.blocking
 
 
+def _completeness_weight(item: str) -> int:
+    return settings.TALENT_COMPLETENESS_WEIGHTS[item]
+
+
 def profile_completeness(talent: TalentProfile) -> Completeness:
     present = {
         "primary_craft": TalentCraft.objects.filter(talent=talent, is_primary=True).exists(),
         "city": talent.city_id is not None,
-        "avatar": talent.avatar_id is not None,
+        "avatar": talent.avatar_id is not None,  # set only by approval
+        "gallery": public_gallery_items(talent.pk).exists(),
         "bio": bool(talent.bio.strip()),
         "years_experience": talent.years_experience is not None,
         "genres": bool(talent.genres),
@@ -155,10 +189,26 @@ def profile_completeness(talent: TalentProfile) -> Completeness:
     }
     missing = tuple(item for item in COMPLETENESS_ITEMS if not present[item])
     required = set(settings.TALENT_REQUIRED_FOR_PUBLISH)
+    total = sum(_completeness_weight(item) for item in COMPLETENESS_ITEMS)
+    lacking = sum(_completeness_weight(item) for item in missing)
+    steps = sorted(
+        (
+            NextStep(
+                item=item,
+                label=CompletenessItem(item).label,
+                hint=COMPLETENESS_HINTS[item],
+                weight=_completeness_weight(item),
+                blocking=item in required,
+            )
+            for item in missing
+        ),
+        key=lambda step: (not step.blocking, -step.weight, COMPLETENESS_ITEMS.index(step.item)),
+    )
     return Completeness(
-        percent=round(100 * (len(COMPLETENESS_ITEMS) - len(missing)) / len(COMPLETENESS_ITEMS)),
+        percent=(100 * (total - lacking)) // total,
         missing=missing,
         blocking=tuple(item for item in missing if item in required),
+        next_steps=tuple(steps),
     )
 
 

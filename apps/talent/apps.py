@@ -13,11 +13,12 @@ class TalentConfig(AppConfig):
         from . import subscribers  # noqa: F401  (registers event handlers)
         from .models import AvailabilityStatus, ModerationReason, TalentProfile
         from .policies import avatar_policy, gallery_policy
-        from .selectors import GalleryStage, has_talent_profile
+        from .selectors import CompletenessItem, GalleryStage, has_talent_profile
 
         register_enum("genders", TalentProfile.Gender)
         register_enum("availability_statuses", AvailabilityStatus)
         register_enum("gallery_stages", GalleryStage)
+        register_enum("completeness_items", CompletenessItem)
         register_enum("moderation_reasons", ModerationReason)
         register_role("talent", has_talent_profile)
         register_policy(avatar_policy())
