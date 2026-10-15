@@ -179,7 +179,7 @@ Selectors: `active_crafts` (`filter is_active`, `prefetch talent_types`), `activ
 - `availability_overrides_between(talent_id, start, end)`: overrides with `start<=date<=end` (unordered; the view orders).
 - `has_craft(talent_id, craft_id)`: exists on TalentCraft.
 - `get_talent_profile(user)` / `has_talent_profile(user)`: `TalentProfile.objects.filter(user=user).first()`; no select_related.
-- `profile_completeness(talent)`: 2 queries (primary craft, any experience) plus field checks; returns `Completeness(percent, missing, blocking)`.
+- `profile_completeness(talent)`: 3 queries (primary craft, any experience, any public gallery item) plus field checks; returns `Completeness(percent, missing, blocking, next_steps)` with a percentage weighted by `TALENT_COMPLETENESS_WEIGHTS` (M1.5).
 - `list_experiences(talent)`: described above; `get_experience(talent, id)`: **unused** (services query directly).
 - `load_profile(talent_id)`: profile with display relations; `get_public_talent(talent_id)`: same, published only.
 
