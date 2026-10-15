@@ -174,3 +174,72 @@ class TestSetPublished:
 
     def test_unpublishing_never_requires_anything(self):
         assert services.set_published(talent=_talent(is_published=True), published=False)
+
+
+class TestPublishedProfileStaysComplete:
+    """A published profile cannot be edited into a state that would block publishing."""
+
+    def _published(self):
+        talent = _talent()
+        _make_publishable(talent)
+        return services.complete_onboarding(talent=talent)
+
+    def _assert_refused(self, call, missing):
+        with pytest.raises(ValidationFailed) as exc:
+            call()
+        assert exc.value.code == "profile_incomplete"
+        assert exc.value.details["missing"] == missing
+
+    def test_clearing_the_city_is_refused_and_nothing_changes(self):
+        talent = self._published()
+        city = talent.city
+        self._assert_refused(
+            lambda: services.update_talent_profile(talent=talent, data={"city": None}), ["city"]
+        )
+        talent.refresh_from_db()
+        assert talent.city == city and talent.is_published
+
+    def test_unpublished_profiles_may_clear_it(self):
+        talent = self._published()
+        services.set_published(talent=talent, published=False)
+        services.update_talent_profile(talent=talent, data={"city": None})
+        talent.refresh_from_db()
+        assert talent.city is None
+
+    def test_other_edits_still_work(self):
+        talent = self._published()
+        services.update_talent_profile(talent=talent, data={"bio": "New bio"})
+
+    def test_deleting_the_last_required_experience_is_refused(self, settings):
+        settings.TALENT_REQUIRED_FOR_PUBLISH = ("primary_craft", "city", "experience")
+        talent = _talent()
+        _make_publishable(talent)
+        experience = services.add_experience(talent=talent, title="Editor", start_year=2020)
+        services.complete_onboarding(talent=talent)
+        self._assert_refused(
+            lambda: services.delete_experience(talent=talent, experience_id=experience.id),
+            ["experience"],
+        )
+        assert Experience.objects.filter(pk=experience.pk).exists()
+
+    def test_deleting_the_last_live_gallery_item_is_refused_when_required(self, settings):
+        from apps.talent.tests.factories import link_item
+
+        settings.TALENT_REQUIRED_FOR_PUBLISH = ("primary_craft", "city", "gallery")
+        talent = _talent()
+        _make_publishable(talent)
+        item = link_item(talent=talent, moderation_status="approved")
+        services.complete_onboarding(talent=talent)
+        self._assert_refused(
+            lambda: services.delete_gallery_item(talent=talent, item_id=item.id), ["gallery"]
+        )
+        item.refresh_from_db()
+        assert item.deleted_at is None
+
+    def test_a_profile_already_missing_a_new_requirement_can_still_be_edited(self, settings):
+        talent = self._published()
+        settings.TALENT_REQUIRED_FOR_PUBLISH = ("primary_craft", "city", "bio")
+        services.update_talent_profile(talent=talent, data={"years_experience": 4})
+        self._assert_refused(
+            lambda: services.update_talent_profile(talent=talent, data={"city": None}), ["city"]
+        )

@@ -77,9 +77,11 @@ def update_talent_profile(*, talent: TalentProfile, data: Mapping) -> TalentProf
     """Edit the caller-editable fields only. Locks the row and saves just those columns, so a
     stale instance cannot overwrite server-controlled state (published, onboarding, KYC)."""
     talent = TalentProfile.objects.select_for_update().get(pk=talent.pk)
+    before = _blocking_before(talent)
     _apply_fields(talent, data)
     _validate_profile(talent)
     talent.save(update_fields=[*data, "updated_at"])
+    _require_still_publishable(talent, before)
     return talent
 
 
@@ -139,7 +141,8 @@ def set_talent_crafts(
     if not all(c.is_active for c in wanted.values()):
         raise ValidationFailed("One or more selected crafts are no longer available.")
 
-    TalentProfile.objects.select_for_update().get(pk=talent.pk)  # serialise concurrent edits
+    locked = TalentProfile.objects.select_for_update().get(pk=talent.pk)  # serialise edits
+    before = _blocking_before(locked)
     TalentCraft.objects.filter(talent=talent).exclude(craft_id__in=wanted).delete()
     TalentCraft.objects.filter(talent=talent, is_primary=True).update(is_primary=False)
     existing = set(TalentCraft.objects.filter(talent=talent).values_list("craft_id", flat=True))
@@ -147,6 +150,7 @@ def set_talent_crafts(
         [TalentCraft(talent=talent, craft_id=cid) for cid in wanted if cid not in existing]
     )
     TalentCraft.objects.filter(talent=talent, craft_id=primary.id).update(is_primary=True)
+    _require_still_publishable(locked, before)
 
 
 @transaction.atomic
@@ -174,6 +178,29 @@ def set_availability(
             AvailabilityOverride.objects.update_or_create(
                 talent=talent, date=day, defaults={"status": status}
             )
+
+
+def _blocking_before(talent: TalentProfile) -> frozenset[str] | None:
+    """What already blocks publishing, for a published profile (None when unpublished)."""
+    if not talent.is_published:
+        return None
+    return frozenset(selectors.profile_completeness(talent).blocking)
+
+
+def _require_still_publishable(talent: TalentProfile, before: frozenset[str] | None) -> None:
+    """A published profile must not lose a required item: refuse the edit (raising inside the
+    service's transaction rolls it back). Items that were already missing, e.g. after product
+    adds a new requirement, do not lock the talent out of other edits. Unpublishing first is
+    always allowed."""
+    if before is None:
+        return
+    lost = [i for i in selectors.profile_completeness(talent).blocking if i not in before]
+    if lost:
+        raise ValidationFailed(
+            "A published profile needs these. Unpublish it first to remove them.",
+            code="profile_incomplete",
+            details={"missing": lost},
+        )
 
 
 def _require_publishable(talent: TalentProfile) -> None:
@@ -264,9 +291,12 @@ def update_experience(*, talent: TalentProfile, experience_id, data: Mapping) ->
 
 @transaction.atomic
 def delete_experience(*, talent: TalentProfile, experience_id) -> None:
+    talent = TalentProfile.objects.select_for_update().get(pk=talent.pk)
+    before = _blocking_before(talent)
     deleted, _ = Experience.objects.filter(talent=talent, pk=experience_id).delete()
     if not deleted:
         raise NotFound("Experience not found.")
+    _require_still_publishable(talent, before)
 
 
 # --- gallery ---------------------------------------------------------------------------------
@@ -432,8 +462,10 @@ def delete_gallery_item(*, talent: TalentProfile, item_id, now=None) -> None:
     now = now or timezone.now()
     talent = _lock_talent(talent)
     item = _locked_own_item(talent, item_id)
+    before = _blocking_before(talent)
     item.deleted_at = now
     item.save(update_fields=["deleted_at", "updated_at"])
+    _require_still_publishable(talent, before)
     if item.media_id is not None:
         media_services.discard(item.media, now=now)
 

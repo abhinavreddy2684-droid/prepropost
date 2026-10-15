@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.reference.tests.factories import CityFactory, CraftFactory
 
-from .factories import TalentProfileFactory
+from .factories import TalentProfileFactory, talent_with_craft
 
 pytestmark = pytest.mark.django_db
 
@@ -268,3 +268,21 @@ class TestAvailability:
         api, _ = talent_client
         response = api.get("/api/talent/me/availability?start=2026-01-01&end=2028-01-01")
         assert response.status_code == 400
+
+
+class TestCompletenessApi:
+    def test_private_profile_carries_weighted_percent_and_next_steps(self, talent_client):
+        api, _ = talent_client
+        completeness = api.get("/api/talent/me").json()["completeness"]
+        assert completeness["percent"] == 0
+        first = completeness["next_steps"][0]
+        assert set(first) == {"item", "label", "hint", "weight", "blocking"}
+        assert (first["item"], first["blocking"]) == ("primary_craft", True)
+
+    def test_published_profile_cannot_clear_its_city(self, auth_client):
+        talent = talent_with_craft(CraftFactory(), city=CityFactory())
+        api, _ = auth_client(talent.user)
+        response = api.patch("/api/talent/me", {"city_id": None}, format="json")
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "profile_incomplete"
+        assert response.json()["error"]["details"] == {"missing": ["city"]}
