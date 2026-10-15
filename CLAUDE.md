@@ -53,8 +53,8 @@ Every app under `apps/` is a bounded context with the same layers:
 | `admin.py` | Staff tooling | change workflow state except via services |
 
 Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_library`, `talent`,
-`recruiters` <- `hiring`. `notifications` subscribes to `hiring.events` and `recruiters.events`;
-`analytics` only to `hiring.events`.
+`recruiters` <- `hiring`. `notifications` subscribes to `hiring.events`, `recruiters.events` and
+`talent.events`; `analytics` only to `hiring.events`.
 
 - **Cross-app access goes through the other app's `selectors`/`services`.** Never query another
   app's tables directly. Example: hiring calls `recruiters.selectors.is_verified_recruiter`.
@@ -67,6 +67,9 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
   exception handler returns domain errors as responses, so a service cannot rely on the request
   transaction rolling back for it.
 - **Lock before you change state:** `select_for_update()` on the row, then check status, then apply.
+- **Signed GET URLs** come from `media_library.selectors.signed_urls`, which only signs. Issue
+  them only for public items, to the owner, or to staff; never return a signed URL from a
+  serializer that can see non-public media.
 - **Media core knows bytes, not meaning.** `media_library` owns upload, confirm, processing and
   purge; it never imports talent. Owning apps register a `MediaPolicy` per purpose in `ready()`
   (`media_library.policies.register_policy`), tell core when bytes are no longer needed
@@ -178,9 +181,10 @@ Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
 - **Open (M1.5): profile completeness.** This is the next MVP-A task.
 - M2 media, phase 1 done (`feat/m2-media-core`): byte-lifecycle core with policies, S3 adapter
   (MinIO locally, see `docs/MEDIA_STORAGE.md`), pre-signed upload + confirm/cancel/upload-url,
-  gallery items, links, avatar submissions, both quotas, expiry and purge jobs. Next: phase 2
-  (processing worker, thumbnails, signed GET, public gallery and likes endpoints), phase 3
-  (moderation services, admin queue, notifications).
+  gallery items, links, avatar submissions, both quotas, expiry and purge jobs. Phase 2 done
+  (`feat/m2-media-processing`): `process_media` worker (type sniffing, metadata stripping,
+  thumbnails), refused-upload notifications, signed GET URLs, public gallery and likes. Next:
+  phase 3 (moderation services, admin queue, moderation notifications).
 - M3-M4 are partly built below the API: `search_talents`, and the hiring services, events and
   notifications exist, but have no endpoints yet (see `docs/CODE_WALKTHROUGH.md` section 7). M3:
   search endpoints (advanced ranking deferred). M4: project and offer endpoints plus an offers

@@ -27,14 +27,17 @@ common  <-  accounts, reference  <-  media_library, talent, recruiters  <-  hiri
 
 * `hiring` asks `recruiters.selectors.is_verified_recruiter` and
   `talent.selectors.has_craft` - it never queries their tables.
-* `notifications` also subscribes to `recruiters.events` (review outcome: in-app + email).
+* `notifications` also subscribes to `recruiters.events` (review outcome: in-app + email) and
+  `talent.events` (refused uploads: in-app + email).
 * `notifications` and `analytics` subscribe to `hiring.events`; `hiring` does not
   know they exist. Add a new reaction (email, CRM sync) without touching hiring.
 * `reference` never imports other apps: they register their enums via
   `reference.registry.register_enum(...)` in `AppConfig.ready()`.
 * `media_library` is a byte-lifecycle core that never imports talent. Talent registers media
   policies (`talent.gallery`, `talent.avatar`) in `ready()`, calls core services
-  (`request_upload`, `discard`) and subscribes to core's generic media events.
+  (`request_upload`, `discard`) and subscribes to core's generic media events. Core's Celery
+  worker (`process_media`) sniffs the real type, re-encodes images without metadata and makes
+  thumbnails; audio, video and PDF are served as uploaded.
 
 ## Cross-cutting building blocks (`apps.common`)
 
@@ -97,3 +100,5 @@ Object storage is configured by `MEDIA_STORAGE_*` (see `docs/MEDIA_STORAGE.md`).
 * Login has IP-scoped throttling only; there is no per-account lockout yet.
 * Registering with a taken email returns 409, which reveals that the account exists.
 * Engagement, ledger, payouts and disputes (M5/M6) are not part of this drop.
+* Media: no transcoding, poster frames, PDF thumbnails, virus scanning or metadata stripping for
+  non-images. Media stuck in PROCESSING is only logged (`warn_stuck_processing`), not recovered.
