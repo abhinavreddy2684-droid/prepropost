@@ -157,6 +157,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.accounts.tasks.flush_expired_tokens",
         "schedule": 24 * 60 * 60.0,
     },
+    "expire-pending-uploads": {
+        "task": "apps.media_library.tasks.expire_pending_uploads",
+        "schedule": 10 * 60.0,
+    },
+    "purge-discarded-media": {
+        "task": "apps.media_library.tasks.purge_discarded_media",
+        "schedule": 30 * 60.0,
+    },
 }
 
 # --- Domain configuration (tunable without code changes) -------------------
