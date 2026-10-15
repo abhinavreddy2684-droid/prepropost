@@ -1,0 +1,2873 @@
+openapi: 3.0.3
+info:
+  title: Pre Pro Post API
+  version: 0.1.0
+paths:
+  /api/admin/recruiters:
+    get:
+      operationId: admin_recruiters_list
+      summary: 'Staff: recruiters awaiting review (oldest first)'
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - approved
+          - pending
+          - rejected
+          - unverified
+        description: Verification state to list. Defaults to pending.
+      tags:
+      - admin
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRecruiterReviewList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/admin/recruiters/{profile_id}/approve:
+    post:
+      operationId: admin_recruiters_approve_create
+      summary: 'Staff: approve a pending recruiter'
+      parameters:
+      - in: path
+        name: profile_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - admin
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecruiterReview'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/admin/recruiters/{profile_id}/reject:
+    post:
+      operationId: admin_recruiters_reject_create
+      summary: 'Staff: reject a pending recruiter with a reason'
+      parameters:
+      - in: path
+        name: profile_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - admin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reject'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Reject'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Reject'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecruiterReview'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/auth/login:
+    post:
+      operationId: auth_login_create
+      description: 'Credential endpoints: no token needed, tighter scoped throttle
+        (set per subclass).'
+      summary: Exchange email and password for tokens
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Login'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Login'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Login'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/auth/logout:
+    post:
+      operationId: auth_logout_create
+      description: 'Credential endpoints: no token needed, tighter scoped throttle
+        (set per subclass).'
+      summary: Revoke a refresh token
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshToken'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RefreshToken'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RefreshToken'
+        required: true
+      security:
+      - {}
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/auth/refresh:
+    post:
+      operationId: auth_refresh_create
+      description: Rotates the refresh token; the old one is blacklisted.
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/auth/register:
+    post:
+      operationId: auth_register_create
+      description: 'Credential endpoints: no token needed, tighter scoped throttle
+        (set per subclass).'
+      summary: Create an account and sign in
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Register'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Register'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Register'
+        required: true
+      security:
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Registered'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/auth/resend-verification:
+    post:
+      operationId: auth_resend_verification_create
+      summary: Send the verification email again
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/auth/verify-email:
+    post:
+      operationId: auth_verify_email_create
+      description: 'Credential endpoints: no token needed, tighter scoped throttle
+        (set per subclass).'
+      summary: Confirm an email address from the link in the verification email
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VerifyEmail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VerifyEmail'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/bootstrap:
+    get:
+      operationId: bootstrap_retrieve
+      description: Public, user-agnostic reference data. Safe for any cache or CDN
+        to store.
+      summary: 'Reference data: crafts, locations and enums'
+      tags:
+      - bootstrap
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/gallery-items/{id}/like:
+    post:
+      operationId: gallery_items_like_create
+      summary: Like a public gallery item (idempotent)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - gallery-items
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeState'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+    delete:
+      operationId: gallery_items_like_destroy
+      summary: Remove your like (idempotent)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - gallery-items
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeState'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/me:
+    get:
+      operationId: me_retrieve
+      summary: The signed-in account and its roles
+      tags:
+      - me
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/media/{id}/cancel:
+    post:
+      operationId: media_cancel_create
+      description: Only a pending upload can be cancelled; the item waiting on it
+        is removed.
+      summary: Give up on an upload that has not been confirmed
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - media
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaState'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/media/{id}/confirm:
+    post:
+      operationId: media_confirm_create
+      description: |2-
+
+        **Upload sequence** (every media purpose):
+
+        1. Call the domain upload endpoint (e.g. `POST /api/talent/me/gallery/uploads`). It validates
+           type, size and quotas and returns `upload` (`url` + `fields`) and `expires_at`.
+        2. POST the file to `upload.url` as `multipart/form-data`: every entry of `upload.fields` first,
+           then the file as `file`. The bucket enforces the key, the exact `Content-Type` and the size.
+        3. When the bucket answers 2xx, call `POST /api/media/{media_id}/confirm` straight away (no user
+           action). If the signed form expired first, get a new one from `upload-url`.
+        4. A worker validates the real file, strips metadata and makes thumbnails.
+        5. Poll the owning item every 2-3 s for its stage:
+           uploading -> processing -> under_review -> live, or failed / rejected.
+
+        Only the uploader may confirm. Already confirmed: returns the current state. 409 `upload_missing`: the file is not in storage yet (retry). 410: the upload expired or was removed.
+      summary: Confirm that the file reached storage (idempotent)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - media
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaState'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/media/{id}/upload-url:
+    post:
+      operationId: media_upload_url_create
+      description: Does not extend `expires_at`. 410 once the upload has expired;
+        409 once it has been confirmed.
+      summary: A fresh signed upload form for the same pending upload
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - media
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadTicket'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/recruiters/me:
+    get:
+      operationId: recruiters_me_retrieve
+      summary: Your recruiter profile, including verification status
+      tags:
+      - recruiters
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecruiterProfile'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+    post:
+      operationId: recruiters_me_create
+      summary: Create your recruiter profile (starts unverified)
+      tags:
+      - recruiters
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecruiterCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RecruiterCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RecruiterCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecruiterProfile'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+    patch:
+      operationId: recruiters_me_partial_update
+      description: If an approved recruiter changes display_name, company_name, recruiter_type
+        or website (ignoring case and surrounding spaces), the profile goes back to
+        `pending` review and cannot send offers until approved again. city is cosmetic.
+      summary: Update your profile (send only the fields to change)
+      tags:
+      - recruiters
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRecruiterUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRecruiterUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRecruiterUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecruiterProfile'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/recruiters/me/submit:
+    post:
+      operationId: recruiters_me_submit_create
+      summary: Submit your profile for manual review (needs a verified email)
+      tags:
+      - recruiters
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecruiterProfile'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/{id}:
+    get:
+      operationId: talent_retrieve
+      summary: A published talent's public profile
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - talent
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicTalent'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/{id}/gallery:
+    get:
+      operationId: talent_gallery_list
+      description: Approved links and approved, processed files only, by position.
+        File URLs are signed and short-lived (`urls.expires_at`); fetch again for
+        fresh ones.
+      summary: A published talent's public gallery
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - talent
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicGalleryItem'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me:
+    get:
+      operationId: talent_me_retrieve
+      summary: Your talent profile, including private fields and completeness
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivateTalent'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+    post:
+      operationId: talent_me_create
+      summary: 'Start onboarding: create your talent profile'
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TalentCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TalentCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TalentCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivateTalent'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+    patch:
+      operationId: talent_me_partial_update
+      description: On a published profile, removing an item required for publishing
+        (e.g. clearing `city_id`) is refused with 400 `profile_incomplete`; unpublish
+        first.
+      summary: Update your profile (send only the fields to change)
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTalentUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTalentUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTalentUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivateTalent'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/availability:
+    get:
+      operationId: talent_me_availability_list
+      summary: Your unavailable/tentative days (anything not listed is available)
+      parameters:
+      - in: query
+        name: end
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: start
+        schema:
+          type: string
+          format: date
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AvailabilityEntry'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+    put:
+      operationId: talent_me_availability_update
+      summary: Set days; 'available' clears a day
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AvailabilityWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AvailabilityWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/avatar:
+    get:
+      operationId: talent_me_avatar_retrieve
+      description: The approved photo stays visible while a new one is uploaded and
+        reviewed.
+      summary: Your approved profile photo and any newer one in progress
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarState'
+          description: ''
+  /api/talent/me/avatar/submission:
+    delete:
+      operationId: talent_me_avatar_submission_destroy
+      summary: Withdraw the new profile photo that is uploading or in review
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/avatar/uploads:
+    post:
+      operationId: talent_me_avatar_uploads_create
+      description: |2-
+
+        **Upload sequence** (every media purpose):
+
+        1. Call the domain upload endpoint (e.g. `POST /api/talent/me/gallery/uploads`). It validates
+           type, size and quotas and returns `upload` (`url` + `fields`) and `expires_at`.
+        2. POST the file to `upload.url` as `multipart/form-data`: every entry of `upload.fields` first,
+           then the file as `file`. The bucket enforces the key, the exact `Content-Type` and the size.
+        3. When the bucket answers 2xx, call `POST /api/media/{media_id}/confirm` straight away (no user
+           action). If the signed form expired first, get a new one from `upload-url`.
+        4. A worker validates the real file, strips metadata and makes thumbnails.
+        5. Poll the owning item every 2-3 s for its stage:
+           uploading -> processing -> under_review -> live, or failed / rejected.
+
+        JPEG/PNG/WebP up to 10 MB. 409 `avatar_submission_open` while another new photo is still uploading, processing or in review (withdraw it first).
+      summary: Start uploading a new profile photo
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvatarUpload'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AvatarUpload'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AvatarUpload'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarUploadResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/crafts:
+    put:
+      operationId: talent_me_crafts_update
+      summary: 'Replace your crafts: one primary plus any supporting (by slug)'
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Crafts'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Crafts'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Crafts'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivateTalent'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/experiences:
+    get:
+      operationId: talent_me_experiences_list
+      summary: Your experience, newest first
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Experience'
+          description: ''
+    post:
+      operationId: talent_me_experiences_create
+      summary: Add an experience entry
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperienceCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ExperienceCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ExperienceCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experience'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/experiences/{id}:
+    patch:
+      operationId: talent_me_experiences_partial_update
+      summary: Update an experience entry
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedExperienceWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedExperienceWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedExperienceWrite'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Experience'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+    delete:
+      operationId: talent_me_experiences_destroy
+      description: 400 `profile_incomplete` if a published profile requires experience
+        and this is the last entry.
+      summary: Delete an experience entry
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/gallery:
+    get:
+      operationId: talent_me_gallery_list
+      description: Ordered by `position`. `stage` is one of uploading, processing,
+        under_review, live, hidden, failed, rejected.
+      summary: Your gallery, every stage (deleted items excluded)
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GalleryItemOwner'
+          description: ''
+  /api/talent/me/gallery/{id}:
+    get:
+      operationId: talent_me_gallery_retrieve
+      summary: One of your gallery items (poll this during upload)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GalleryItemOwner'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+    patch:
+      operationId: talent_me_gallery_partial_update
+      description: 'The file and the link cannot change: delete the item and add a
+        new one. Edits to a live item stay live. Rejected items cannot be edited (409
+        `item_rejected`).'
+      summary: Edit an item's text, craft or position
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedGalleryItemUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedGalleryItemUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedGalleryItemUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GalleryItemOwner'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+    delete:
+      operationId: talent_me_gallery_destroy
+      description: 400 `profile_incomplete` if a published profile requires a live
+        gallery item and this is the last one.
+      summary: Delete a gallery item
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/gallery/links:
+    post:
+      operationId: talent_me_gallery_links_create
+      description: https links only. Goes straight to review. 409 `gallery_full` at
+        the limit.
+      summary: Add a link (YouTube, Vimeo, SoundCloud ...) to your gallery
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GalleryLink'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GalleryLink'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GalleryLink'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GalleryItemOwner'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/gallery/uploads:
+    post:
+      operationId: talent_me_gallery_uploads_create
+      description: |2-
+
+        **Upload sequence** (every media purpose):
+
+        1. Call the domain upload endpoint (e.g. `POST /api/talent/me/gallery/uploads`). It validates
+           type, size and quotas and returns `upload` (`url` + `fields`) and `expires_at`.
+        2. POST the file to `upload.url` as `multipart/form-data`: every entry of `upload.fields` first,
+           then the file as `file`. The bucket enforces the key, the exact `Content-Type` and the size.
+        3. When the bucket answers 2xx, call `POST /api/media/{media_id}/confirm` straight away (no user
+           action). If the signed form expired first, get a new one from `upload-url`.
+        4. A worker validates the real file, strips metadata and makes thumbnails.
+        5. Poll the owning item every 2-3 s for its stage:
+           uploading -> processing -> under_review -> live, or failed / rejected.
+
+        Images (JPEG/PNG/WebP) up to 10 MB, audio (MP3/M4A) 20 MB, video (MP4) 200 MB, PDF 10 MB. HEIC is not accepted. 409 `gallery_full` at the gallery limit, 409 `too_many_uploads` when too many uploads are still in progress. The item enters review once its file is processed and it has a title.
+      summary: Start a gallery file upload
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GalleryUpload'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GalleryUpload'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GalleryUpload'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GalleryUploadResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/onboarding/complete:
+    post:
+      operationId: talent_me_onboarding_complete_create
+      summary: Finish onboarding; publishes the profile the first time
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivateTalent'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent/me/publish:
+    put:
+      operationId: talent_me_publish_update
+      summary: Show or hide your profile in search
+      tags:
+      - talent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Publish'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Publish'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Publish'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivateTalent'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+components:
+  schemas:
+    ApprovedAvatar:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        media_id:
+          type: string
+          format: uuid
+          readOnly: true
+        approved_at:
+          type: string
+          format: date-time
+          readOnly: true
+        urls:
+          allOf:
+          - $ref: '#/components/schemas/SignedUrls'
+          nullable: true
+          readOnly: true
+      required:
+      - approved_at
+      - id
+      - media_id
+      - urls
+    AvailabilityEntry:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/AvailabilityEntryStatusEnum'
+      required:
+      - date
+      - status
+    AvailabilityEntryStatusEnum:
+      enum:
+      - available
+      - tentative
+      - unavailable
+      type: string
+      description: |-
+        * `available` - Available
+        * `tentative` - Tentative
+        * `unavailable` - Unavailable
+    AvailabilityWrite:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailabilityEntry'
+      required:
+      - entries
+    AvatarState:
+      type: object
+      properties:
+        avatar:
+          allOf:
+          - $ref: '#/components/schemas/ApprovedAvatar'
+          nullable: true
+          description: The current approved photo.
+        submission:
+          allOf:
+          - $ref: '#/components/schemas/AvatarSubmissionOwner'
+          nullable: true
+          description: 'A newer photo on its way: uploading, in review, or refused.'
+      required:
+      - avatar
+      - submission
+    AvatarSubmissionOwner:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        media_id:
+          type: string
+          format: uuid
+          readOnly: true
+        stage:
+          allOf:
+          - $ref: '#/components/schemas/StageEnum'
+          readOnly: true
+        failure_reason:
+          type: string
+          readOnly: true
+        moderation_reason:
+          allOf:
+          - $ref: '#/components/schemas/ModerationReasonEnum'
+          readOnly: true
+        moderation_note:
+          type: string
+          readOnly: true
+        urls:
+          allOf:
+          - $ref: '#/components/schemas/SignedUrls'
+          nullable: true
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - failure_reason
+      - id
+      - media_id
+      - moderation_note
+      - moderation_reason
+      - stage
+      - urls
+    AvatarUpload:
+      type: object
+      properties:
+        content_type:
+          type: string
+          maxLength: 100
+        size:
+          type: integer
+          minimum: 1
+          description: File size in bytes.
+      required:
+      - content_type
+      - size
+    AvatarUploadResponse:
+      type: object
+      properties:
+        submission:
+          $ref: '#/components/schemas/AvatarSubmissionOwner'
+        media_id:
+          type: string
+          format: uuid
+        upload:
+          $ref: '#/components/schemas/SignedUpload'
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - expires_at
+      - media_id
+      - submission
+      - upload
+    BlankEnum:
+      enum:
+      - ''
+    CityOut:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        state_slug:
+          type: string
+        state_name:
+          type: string
+      required:
+      - id
+      - name
+      - slug
+      - state_name
+      - state_slug
+    Crafts:
+      type: object
+      properties:
+        primary:
+          type: string
+          pattern: ^[-a-zA-Z0-9_]+$
+        supporting:
+          type: array
+          items:
+            type: string
+            pattern: ^[-a-zA-Z0-9_]+$
+      required:
+      - primary
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          $ref: '#/components/schemas/_ErrorBody'
+      required:
+      - error
+    Experience:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          maxLength: 160
+        company:
+          type: string
+          maxLength: 160
+        start_year:
+          type: integer
+          maximum: 32767
+          minimum: 0
+        end_year:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+        description:
+          type: string
+        craft:
+          type: string
+          readOnly: true
+      required:
+      - craft
+      - id
+      - start_year
+      - title
+    ExperienceCreate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 160
+        company:
+          type: string
+          maxLength: 160
+        start_year:
+          type: integer
+        end_year:
+          type: integer
+          nullable: true
+        description:
+          type: string
+          maxLength: 2000
+        craft:
+          type: string
+          nullable: true
+          pattern: ^[-a-zA-Z0-9_]+$
+      required:
+      - start_year
+      - title
+    FailureReasonEnum:
+      enum:
+      - unsupported_type
+      - type_mismatch
+      - too_large
+      - corrupt
+      - too_many_pixels
+      - storage_error
+      type: string
+      description: |-
+        * `unsupported_type` - This file type is not supported
+        * `type_mismatch` - The file is not the type it claims to be
+        * `too_large` - The file is too large
+        * `corrupt` - The file could not be read
+        * `too_many_pixels` - The image has too many pixels
+        * `storage_error` - The file could not be stored
+    GalleryItemOwner:
+      type: object
+      description: 'The owner''s view of an item: everything, plus the derived stage.
+        Polled during upload.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        kind:
+          type: string
+          readOnly: true
+        media_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        external_url:
+          type: string
+          format: uri
+          readOnly: true
+        link_provider:
+          allOf:
+          - $ref: '#/components/schemas/LinkProviderEnum'
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        year:
+          type: integer
+          readOnly: true
+          nullable: true
+        craft:
+          type: string
+          readOnly: true
+        position:
+          type: integer
+          readOnly: true
+        stage:
+          allOf:
+          - $ref: '#/components/schemas/StageEnum'
+          readOnly: true
+        failure_reason:
+          readOnly: true
+          oneOf:
+          - $ref: '#/components/schemas/FailureReasonEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+        moderation_reason:
+          allOf:
+          - $ref: '#/components/schemas/ModerationReasonEnum'
+          readOnly: true
+        moderation_note:
+          type: string
+          readOnly: true
+        submitted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        likes_count:
+          type: integer
+          readOnly: true
+        urls:
+          allOf:
+          - $ref: '#/components/schemas/SignedUrls'
+          nullable: true
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - craft
+      - created_at
+      - description
+      - external_url
+      - failure_reason
+      - id
+      - kind
+      - likes_count
+      - link_provider
+      - media_id
+      - moderation_note
+      - moderation_reason
+      - position
+      - stage
+      - submitted_at
+      - title
+      - updated_at
+      - urls
+      - year
+    GalleryLink:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 160
+        description:
+          type: string
+          maxLength: 2000
+        year:
+          type: integer
+          nullable: true
+        craft:
+          type: string
+          nullable: true
+          description: A craft slug.
+          pattern: ^[-a-zA-Z0-9_]+$
+        external_url:
+          type: string
+          format: uri
+          maxLength: 1000
+      required:
+      - external_url
+      - title
+    GalleryUpload:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 160
+        description:
+          type: string
+          maxLength: 2000
+        year:
+          type: integer
+          nullable: true
+        craft:
+          type: string
+          nullable: true
+          description: A craft slug.
+          pattern: ^[-a-zA-Z0-9_]+$
+        content_type:
+          type: string
+          maxLength: 100
+        size:
+          type: integer
+          minimum: 1
+          description: File size in bytes.
+      required:
+      - content_type
+      - size
+    GalleryUploadResponse:
+      type: object
+      properties:
+        item:
+          $ref: '#/components/schemas/GalleryItemOwner'
+        media_id:
+          type: string
+          format: uuid
+        upload:
+          $ref: '#/components/schemas/SignedUpload'
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - expires_at
+      - item
+      - media_id
+      - upload
+    GenderEnum:
+      enum:
+      - male
+      - female
+      - non_binary
+      - other
+      type: string
+      description: |-
+        * `male` - Male
+        * `female` - Female
+        * `non_binary` - Non-binary
+        * `other` - Other
+    KindEnum:
+      enum:
+      - image
+      - audio
+      - video
+      - pdf
+      type: string
+      description: |-
+        * `image` - Image
+        * `audio` - Audio
+        * `video` - Video
+        * `pdf` - PDF
+    KycStatusEnum:
+      enum:
+      - not_started
+      - pending
+      - verified
+      - rejected
+      type: string
+      description: |-
+        * `not_started` - Not started
+        * `pending` - Pending
+        * `verified` - Verified
+        * `rejected` - Rejected
+    LikeState:
+      type: object
+      properties:
+        item_id:
+          type: string
+          format: uuid
+        liked:
+          type: boolean
+        likes_count:
+          type: integer
+      required:
+      - item_id
+      - liked
+      - likes_count
+    LinkProviderEnum:
+      enum:
+      - youtube
+      - vimeo
+      - soundcloud
+      - spotify
+      - instagram
+      - google_drive
+      - other
+      type: string
+      description: |-
+        * `youtube` - YouTube
+        * `vimeo` - Vimeo
+        * `soundcloud` - SoundCloud
+        * `spotify` - Spotify
+        * `instagram` - Instagram
+        * `google_drive` - Google Drive
+        * `other` - Other
+    Login:
+      type: object
+      properties:
+        email:
+          type: string
+          maxLength: 254
+        password:
+          type: string
+          writeOnly: true
+          maxLength: 128
+      required:
+      - email
+      - password
+    Me:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        email_verified:
+          type: boolean
+        roles:
+          type: array
+          items:
+            type: string
+      required:
+      - email
+      - email_verified
+      - id
+      - roles
+    MediaState:
+      type: object
+      description: The byte lifecycle as the uploader sees it.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        purpose:
+          type: string
+          readOnly: true
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/KindEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/MediaStateStatusEnum'
+          readOnly: true
+        failure_reason:
+          allOf:
+          - $ref: '#/components/schemas/FailureReasonEnum'
+          readOnly: true
+        declared_content_type:
+          type: string
+          readOnly: true
+        declared_size:
+          type: integer
+          readOnly: true
+        actual_size:
+          type: integer
+          readOnly: true
+          nullable: true
+        width:
+          type: integer
+          readOnly: true
+          nullable: true
+        height:
+          type: integer
+          readOnly: true
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          readOnly: true
+        uploaded_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        ready_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - actual_size
+      - declared_content_type
+      - declared_size
+      - expires_at
+      - failure_reason
+      - height
+      - id
+      - kind
+      - purpose
+      - ready_at
+      - status
+      - uploaded_at
+      - width
+    MediaStateStatusEnum:
+      enum:
+      - pending_upload
+      - uploaded
+      - processing
+      - ready
+      - failed
+      - expired
+      type: string
+      description: |-
+        * `pending_upload` - Pending upload
+        * `uploaded` - Uploaded
+        * `processing` - Processing
+        * `ready` - Ready
+        * `failed` - Failed
+        * `expired` - Expired
+    ModerationReasonEnum:
+      enum:
+      - copyright
+      - inappropriate
+      - irrelevant
+      - misleading
+      - other
+      type: string
+      description: |-
+        * `copyright` - Copyright
+        * `inappropriate` - Inappropriate
+        * `irrelevant` - Not relevant to the profile
+        * `misleading` - Misleading
+        * `other` - Other
+    PaginatedRecruiterReviewList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecruiterReview'
+    PatchedExperienceWrite:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 160
+        company:
+          type: string
+          maxLength: 160
+        start_year:
+          type: integer
+        end_year:
+          type: integer
+          nullable: true
+        description:
+          type: string
+          maxLength: 2000
+        craft:
+          type: string
+          nullable: true
+          pattern: ^[-a-zA-Z0-9_]+$
+    PatchedGalleryItemUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 160
+        description:
+          type: string
+          maxLength: 2000
+        year:
+          type: integer
+          nullable: true
+        craft:
+          type: string
+          nullable: true
+          description: A craft slug.
+          pattern: ^[-a-zA-Z0-9_]+$
+        position:
+          type: integer
+          minimum: 0
+    PatchedRecruiterUpdate:
+      type: object
+      properties:
+        display_name:
+          type: string
+          maxLength: 150
+        company_name:
+          type: string
+          maxLength: 200
+        recruiter_type:
+          type: string
+          maxLength: 20
+        website:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 200
+          - type: string
+            maxLength: 0
+        city_id:
+          type: string
+          format: uuid
+          nullable: true
+    PatchedTalentUpdate:
+      type: object
+      properties:
+        full_name:
+          type: string
+          maxLength: 150
+        professional_name:
+          type: string
+          maxLength: 150
+        bio:
+          type: string
+          maxLength: 2000
+        city_id:
+          type: string
+          format: uuid
+          nullable: true
+        years_experience:
+          type: integer
+          nullable: true
+        genres:
+          type: array
+          items:
+            type: string
+            maxLength: 40
+          maxItems: 20
+        gender:
+          type: string
+          maxLength: 12
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+    PrivateTalent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        professional_name:
+          type: string
+          maxLength: 150
+        bio:
+          type: string
+        city:
+          allOf:
+          - $ref: '#/components/schemas/CityOut'
+          readOnly: true
+        years_experience:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+        genres:
+          type: array
+          items:
+            type: string
+            maxLength: 40
+        avatar_id:
+          type: string
+          format: uuid
+          readOnly: true
+        avatar:
+          allOf:
+          - $ref: '#/components/schemas/SignedUrls'
+          nullable: true
+          readOnly: true
+        crafts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentCraftOut'
+          readOnly: true
+        experiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Experience'
+          readOnly: true
+        full_name:
+          type: string
+          maxLength: 150
+        gender:
+          oneOf:
+          - $ref: '#/components/schemas/GenderEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+        is_published:
+          type: boolean
+        kyc_status:
+          $ref: '#/components/schemas/KycStatusEnum'
+        onboarding_completed:
+          type: boolean
+          readOnly: true
+        completeness:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+      required:
+      - avatar
+      - avatar_id
+      - city
+      - completeness
+      - crafts
+      - experiences
+      - full_name
+      - id
+      - onboarding_completed
+      - professional_name
+    PublicGalleryItem:
+      type: object
+      description: What a visitor sees. Only items passing the public visibility rule
+        reach this.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        kind:
+          type: string
+          readOnly: true
+        external_url:
+          type: string
+          format: uri
+          readOnly: true
+        link_provider:
+          allOf:
+          - $ref: '#/components/schemas/LinkProviderEnum'
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        year:
+          type: integer
+          readOnly: true
+          nullable: true
+        craft:
+          type: string
+          readOnly: true
+        position:
+          type: integer
+          readOnly: true
+        likes_count:
+          type: integer
+          readOnly: true
+        width:
+          type: integer
+          readOnly: true
+          nullable: true
+        height:
+          type: integer
+          readOnly: true
+          nullable: true
+        urls:
+          allOf:
+          - $ref: '#/components/schemas/SignedUrls'
+          nullable: true
+          readOnly: true
+      required:
+      - craft
+      - description
+      - external_url
+      - height
+      - id
+      - kind
+      - likes_count
+      - link_provider
+      - position
+      - title
+      - urls
+      - width
+      - year
+    PublicTalent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        professional_name:
+          type: string
+          maxLength: 150
+        bio:
+          type: string
+        city:
+          allOf:
+          - $ref: '#/components/schemas/CityOut'
+          readOnly: true
+        years_experience:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+        genres:
+          type: array
+          items:
+            type: string
+            maxLength: 40
+        avatar_id:
+          type: string
+          format: uuid
+          readOnly: true
+        avatar:
+          allOf:
+          - $ref: '#/components/schemas/SignedUrls'
+          nullable: true
+          readOnly: true
+        crafts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentCraftOut'
+          readOnly: true
+        experiences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Experience'
+          readOnly: true
+      required:
+      - avatar
+      - avatar_id
+      - city
+      - crafts
+      - experiences
+      - id
+      - professional_name
+    Publish:
+      type: object
+      properties:
+        published:
+          type: boolean
+      required:
+      - published
+    RecruiterCityOut:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        state_slug:
+          type: string
+        state_name:
+          type: string
+      required:
+      - id
+      - name
+      - slug
+      - state_name
+      - state_slug
+    RecruiterCreate:
+      type: object
+      description: Same fields; only the display name is mandatory when the profile
+        is first created.
+      properties:
+        display_name:
+          type: string
+          maxLength: 150
+        company_name:
+          type: string
+          maxLength: 200
+        recruiter_type:
+          type: string
+          maxLength: 20
+        website:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 200
+          - type: string
+            maxLength: 0
+        city_id:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - display_name
+    RecruiterProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        display_name:
+          type: string
+          readOnly: true
+        company_name:
+          type: string
+          readOnly: true
+        recruiter_type:
+          allOf:
+          - $ref: '#/components/schemas/RecruiterTypeEnum'
+          readOnly: true
+        website:
+          type: string
+          format: uri
+          readOnly: true
+        city:
+          allOf:
+          - $ref: '#/components/schemas/RecruiterCityOut'
+          nullable: true
+        verification_status:
+          allOf:
+          - $ref: '#/components/schemas/VerificationStatusEnum'
+          readOnly: true
+        rejection_reason:
+          type: string
+          readOnly: true
+        verified_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - city
+      - company_name
+      - created_at
+      - display_name
+      - id
+      - recruiter_type
+      - rejection_reason
+      - submitted_at
+      - updated_at
+      - verification_status
+      - verified_at
+      - website
+    RecruiterReview:
+      type: object
+      description: 'Staff-only view of a profile: adds the account details a reviewer
+        needs.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        display_name:
+          type: string
+          readOnly: true
+        company_name:
+          type: string
+          readOnly: true
+        recruiter_type:
+          allOf:
+          - $ref: '#/components/schemas/RecruiterTypeEnum'
+          readOnly: true
+        website:
+          type: string
+          format: uri
+          readOnly: true
+        city:
+          allOf:
+          - $ref: '#/components/schemas/RecruiterCityOut'
+          nullable: true
+        verification_status:
+          allOf:
+          - $ref: '#/components/schemas/VerificationStatusEnum'
+          readOnly: true
+        rejection_reason:
+          type: string
+          readOnly: true
+        verified_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        email:
+          type: string
+          format: email
+        email_verified:
+          type: boolean
+      required:
+      - city
+      - company_name
+      - created_at
+      - display_name
+      - email
+      - email_verified
+      - id
+      - recruiter_type
+      - rejection_reason
+      - submitted_at
+      - updated_at
+      - verification_status
+      - verified_at
+      - website
+    RecruiterTypeEnum:
+      enum:
+      - individual
+      - company
+      - production_house
+      type: string
+      description: |-
+        * `individual` - Individual
+        * `company` - Company
+        * `production_house` - Production house
+    RefreshToken:
+      type: object
+      properties:
+        refresh:
+          type: string
+      required:
+      - refresh
+    Register:
+      type: object
+      properties:
+        email:
+          type: string
+          maxLength: 254
+        password:
+          type: string
+          writeOnly: true
+          maxLength: 128
+      required:
+      - email
+      - password
+    Registered:
+      type: object
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
+        user:
+          $ref: '#/components/schemas/Me'
+      required:
+      - access
+      - refresh
+      - user
+    Reject:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 255
+      required:
+      - reason
+    SignedUpload:
+      type: object
+      description: POST `fields` (in order) then the file as `file`, multipart/form-data,
+        to `url`.
+      properties:
+        url:
+          type: string
+          format: uri
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: The signed form stops working after this.
+      required:
+      - expires_at
+      - fields
+      - url
+    SignedUrls:
+      type: object
+      description: Short-lived GET URLs. Refetch the owning resource for fresh ones
+        after `expires_at`.
+      properties:
+        original:
+          type: string
+          format: uri
+        thumbnails:
+          type: object
+          additionalProperties:
+            type: string
+            format: uri
+          description: WebP thumbnails by longest edge in pixels.
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - expires_at
+      - original
+      - thumbnails
+    StageEnum:
+      enum:
+      - uploading
+      - processing
+      - under_review
+      - live
+      - hidden
+      - failed
+      - rejected
+      type: string
+      description: |-
+        * `uploading` - Uploading
+        * `processing` - Processing
+        * `under_review` - Under review
+        * `live` - Live
+        * `hidden` - Hidden
+        * `failed` - Failed
+        * `rejected` - Rejected
+    TalentCraftOut:
+      type: object
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        is_primary:
+          type: boolean
+      required:
+      - slug
+      - title
+    TalentCreate:
+      type: object
+      description: Same fields; only the names are mandatory when the profile is first
+        created.
+      properties:
+        full_name:
+          type: string
+          maxLength: 150
+        professional_name:
+          type: string
+          maxLength: 150
+        bio:
+          type: string
+          maxLength: 2000
+        city_id:
+          type: string
+          format: uuid
+          nullable: true
+        years_experience:
+          type: integer
+          nullable: true
+        genres:
+          type: array
+          items:
+            type: string
+            maxLength: 40
+          maxItems: 20
+        gender:
+          type: string
+          maxLength: 12
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - full_name
+      - professional_name
+    TokenPair:
+      type: object
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    UploadTicket:
+      type: object
+      properties:
+        media_id:
+          type: string
+          format: uuid
+        upload:
+          $ref: '#/components/schemas/SignedUpload'
+        expires_at:
+          type: string
+          format: date-time
+          description: Confirm before this or the upload expires and must be started
+            again.
+      required:
+      - expires_at
+      - media_id
+      - upload
+    VerificationStatusEnum:
+      enum:
+      - unverified
+      - pending
+      - approved
+      - rejected
+      type: string
+      description: |-
+        * `unverified` - Unverified
+        * `pending` - Pending review
+        * `approved` - Approved
+        * `rejected` - Rejected
+    VerifyEmail:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+      - token
+    _ErrorBody:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details: {}
+      required:
+      - code
+      - details
+      - message
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
