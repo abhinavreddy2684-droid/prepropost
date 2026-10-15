@@ -67,6 +67,11 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
   exception handler returns domain errors as responses, so a service cannot rely on the request
   transaction rolling back for it.
 - **Lock before you change state:** `select_for_update()` on the row, then check status, then apply.
+- **Media core knows bytes, not meaning.** `media_library` owns upload, confirm, processing and
+  purge; it never imports talent. Owning apps register a `MediaPolicy` per purpose in `ready()`
+  (`media_library.policies.register_policy`), tell core when bytes are no longer needed
+  (`services.discard`), and subscribe to `media_ready` / `media_failed` / `media_expired`, ignoring
+  purposes that are not theirs. Only `media_library/storage.py` imports boto3.
 - **Cross-module reactions use events** (`apps.common.events.publish`/`subscribe`). Events carry
   plain ids, never model instances, and are dispatched after commit.
 - **Reference data (crafts, states, cities) lives only in the database.** Do not hardcode lists.
@@ -90,7 +95,15 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
 - **Availability:** only `tentative` and `unavailable` days are stored; "available" is implicit. A
   talent card shows Unavailable only if all of the next 7 days are unavailable.
 - **Exactly one primary craft per talent** (enforced by a partial unique index).
-- Only `READY` gallery media is public. The profile photo is a `Media` row with `purpose=avatar`.
+- **Gallery visibility:** an item is public only if `deleted_at` is null, `moderation_status` is
+  `APPROVED`, and it is a link or its media is `READY`. The rule lives in
+  `talent.selectors._public_items_q`; every public read (gallery, likes, M3 talent detail) goes
+  through it. The owner sees all their non-deleted items with a derived stage; staff see everything.
+- The profile photo is `TalentProfile.avatar` -> an approved `AvatarSubmission`. It is set only by
+  approval; the previous photo stays visible while a new one is in review.
+- **Media lock order, always:** `TalentProfile` row first, then the `User` row (taken inside
+  `media_library.services.request_upload`), then the `Media` row. Never lock a profile after a
+  Media row.
 - Offers are terms snapshots. Do not edit an offer's terms after it is sent.
 
 ## Testing conventions
@@ -163,10 +176,15 @@ Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
   email. Revoke/suspend is not built (M6.4). Talent services got the same hardening (row lock on
   edit, text caps, lifecycle fields read-only in admin).
 - **Open (M1.5): profile completeness.** This is the next MVP-A task.
-- M2-M4 are partly built below the API: media models and likes, `search_talents`, and the hiring
-  services, events and notifications exist, but none have endpoints yet (see
-  `docs/CODE_WALKTHROUGH.md` section 7). M2: pre-signed media upload. M3: search endpoints (advanced
-  ranking deferred). M4: project and offer endpoints plus an offers inbox.
+- M2 media, phase 1 done (`feat/m2-media-core`): byte-lifecycle core with policies, S3 adapter
+  (MinIO locally, see `docs/MEDIA_STORAGE.md`), pre-signed upload + confirm/cancel/upload-url,
+  gallery items, links, avatar submissions, both quotas, expiry and purge jobs. Next: phase 2
+  (processing worker, thumbnails, signed GET, public gallery and likes endpoints), phase 3
+  (moderation services, admin queue, notifications).
+- M3-M4 are partly built below the API: `search_talents`, and the hiring services, events and
+  notifications exist, but have no endpoints yet (see `docs/CODE_WALKTHROUGH.md` section 7). M3:
+  search endpoints (advanced ranking deferred). M4: project and offer endpoints plus an offers
+  inbox.
 - MVP-B (M5 escrow and ledger, M6 payouts, KYC, disputes, admin): **ask before starting.**
   M7: hardening and launch.
 - Product decisions are locked in the plan; do not reopen them without asking.
