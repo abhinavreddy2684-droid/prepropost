@@ -39,5 +39,7 @@ jobs:
       - run: ruff check . && ruff format --check .
       - run: python manage.py makemigrations --check --dry-run
         env: { DJANGO_SETTINGS_MODULE: config.settings.test }
+      # Fails when an endpoint changed but the committed openapi.yaml was not regenerated.
+      - run: make schema-check
       - run: pytest
         env: { MEDIA_TEST_S3_ENDPOINT: "http://localhost:9000" }
