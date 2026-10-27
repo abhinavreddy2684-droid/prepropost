@@ -23,10 +23,19 @@ from .models import (
 from .selectors import (
     CompletenessItem,
     GalleryStage,
+    TalentFilters,
     avatar_stage,
     gallery_stage,
     profile_completeness,
 )
+
+_MAX_GENRES = 10
+_MAX_GENRE_LENGTH = 40  # TalentProfile.genres item length
+
+
+class CraftRefSerializer(serializers.Serializer):
+    slug = serializers.CharField()
+    title = serializers.CharField()
 
 
 class CityOutSerializer(serializers.Serializer):
@@ -85,6 +94,124 @@ class PublicTalentSerializer(serializers.ModelSerializer):
     def get_avatar(self, obj) -> dict | None:
         """The approved photo only; a photo in review is never public."""
         return _urls(obj.avatar.media) if obj.avatar_id else None
+
+
+class TalentCardSerializer(serializers.ModelSerializer):
+    """A search result. A strict whitelist: no bio, experiences or any private field."""
+
+    city = CityOutSerializer(read_only=True)
+    primary_craft = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    is_available = serializers.BooleanField(
+        read_only=True, help_text="False only if every one of the next 7 days is unavailable."
+    )
+
+    class Meta:
+        model = TalentProfile
+        fields = (
+            "id",
+            "professional_name",
+            "city",
+            "years_experience",
+            "genres",
+            "primary_craft",
+            "avatar",
+            "is_available",
+        )
+
+    @extend_schema_field(CraftRefSerializer(allow_null=True))
+    def get_primary_craft(self, obj) -> dict | None:
+        # Reads the prefetched crafts; filtering in Python avoids a query per card.
+        for talent_craft in obj.talent_crafts.all():
+            if talent_craft.is_primary:
+                return {"slug": talent_craft.craft.slug, "title": talent_craft.craft.title}
+        return None
+
+    @extend_schema_field(SignedUrlsSerializer(allow_null=True))
+    def get_avatar(self, obj) -> dict | None:
+        """The approved photo only (`avatar` is set only by approval)."""
+        return _urls(obj.avatar.media) if obj.avatar_id else None
+
+
+class TalentSearchParamsSerializer(serializers.Serializer):
+    """Query parameters of GET /api/talent. Unknown parameters (cursor, limit) are ignored."""
+
+    q = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=100,
+        help_text="Case-insensitive match on professional name, bio or city name.",
+    )
+    craft = serializers.SlugField(
+        required=False, max_length=140, help_text="Craft slug. Unknown slugs match nobody."
+    )
+    primary_craft_only = serializers.BooleanField(
+        required=False, help_text="With `craft`: only talent whose primary craft it is."
+    )
+    state = serializers.SlugField(required=False, max_length=140, help_text="State slug.")
+    city = serializers.SlugField(
+        required=False,
+        max_length=140,
+        help_text="City slug. Slugs are unique only within a state; add `state` to be exact.",
+    )
+    genres = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=_MAX_GENRES * 41,
+        help_text=f"Comma-separated, at most {_MAX_GENRES}. Matches talent with any of them.",
+    )
+    available = serializers.BooleanField(
+        required=False,
+        help_text="true: not fully booked over the next 7 days. false: fully booked.",
+    )
+    # Restricted: approved recruiters only (401 anonymous, 403 anyone else). Never sent by the
+    # public listing.
+    gender = serializers.ChoiceField(
+        choices=TalentProfile.Gender.choices,
+        required=False,
+        help_text="RESTRICTED to approved recruiters.",
+    )
+    min_age = serializers.IntegerField(
+        required=False,
+        min_value=0,
+        max_value=120,
+        help_text="Years, inclusive. RESTRICTED to approved recruiters.",
+    )
+    max_age = serializers.IntegerField(
+        required=False,
+        min_value=0,
+        max_value=120,
+        help_text="Years, inclusive. RESTRICTED to approved recruiters.",
+    )
+
+    def validate_genres(self, value: str) -> tuple[str, ...]:
+        genres = tuple(dict.fromkeys(g.strip() for g in value.split(",") if g.strip()))
+        if len(genres) > _MAX_GENRES or any(len(g) > _MAX_GENRE_LENGTH for g in genres):
+            raise serializers.ValidationError(
+                f"Send at most {_MAX_GENRES} genres of {_MAX_GENRE_LENGTH} characters or fewer."
+            )
+        return genres
+
+    def validate(self, attrs):
+        low, high = attrs.get("min_age"), attrs.get("max_age")
+        if low is not None and high is not None and low > high:
+            raise serializers.ValidationError({"min_age": "Must not be greater than max_age."})
+        return attrs
+
+    def to_filters(self) -> TalentFilters:
+        data = self.validated_data
+        return TalentFilters(
+            q=data.get("q", "").strip(),
+            craft_slug=data.get("craft", ""),
+            primary_craft_only=data.get("primary_craft_only", False),
+            state_slug=data.get("state", ""),
+            city_slug=data.get("city", ""),
+            gender=data.get("gender", ""),
+            min_age=data.get("min_age"),
+            max_age=data.get("max_age"),
+            available=data.get("available"),
+            genres=data.get("genres", ()),
+        )
 
 
 class NextStepSerializer(serializers.Serializer):

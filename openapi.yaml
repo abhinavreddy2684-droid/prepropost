@@ -764,6 +764,137 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: ''
+  /api/talent:
+    get:
+      operationId: talent_list
+      description: 'Public: callable with or without a bearer token (an expired or
+        invalid token is treated as anonymous, never a 401). Newest profile activity
+        first, cursor-paginated (`limit` up to 100, `cursor` from `next`/`previous`).
+        Cards carry no private fields. `gender`, `min_age` and `max_age` are restricted:
+        401 if you are not signed in, 403 unless you are an approved recruiter; the
+        public listing never sends them.'
+      summary: Search published talent
+      parameters:
+      - in: query
+        name: available
+        schema:
+          type: boolean
+        description: 'true: not fully booked over the next 7 days. false: fully booked.'
+      - in: query
+        name: city
+        schema:
+          type: string
+          maxLength: 140
+          pattern: ^[-a-zA-Z0-9_]+$
+          minLength: 1
+        description: City slug. Slugs are unique only within a state; add `state`
+          to be exact.
+      - in: query
+        name: craft
+        schema:
+          type: string
+          maxLength: 140
+          pattern: ^[-a-zA-Z0-9_]+$
+          minLength: 1
+        description: Craft slug. Unknown slugs match nobody.
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: query
+        name: gender
+        schema:
+          enum:
+          - male
+          - female
+          - non_binary
+          - other
+          type: string
+          minLength: 1
+        description: |-
+          RESTRICTED to approved recruiters.
+
+          * `male` - Male
+          * `female` - Female
+          * `non_binary` - Non-binary
+          * `other` - Other
+      - in: query
+        name: genres
+        schema:
+          type: string
+          maxLength: 410
+        description: Comma-separated, at most 10. Matches talent with any of them.
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: max_age
+        schema:
+          type: integer
+          maximum: 120
+          minimum: 0
+        description: Years, inclusive. RESTRICTED to approved recruiters.
+      - in: query
+        name: min_age
+        schema:
+          type: integer
+          maximum: 120
+          minimum: 0
+        description: Years, inclusive. RESTRICTED to approved recruiters.
+      - in: query
+        name: primary_craft_only
+        schema:
+          type: boolean
+        description: 'With `craft`: only talent whose primary craft it is.'
+      - in: query
+        name: q
+        schema:
+          type: string
+          maxLength: 100
+        description: Case-insensitive match on professional name, bio or city name.
+      - in: query
+        name: state
+        schema:
+          type: string
+          maxLength: 140
+          pattern: ^[-a-zA-Z0-9_]+$
+          minLength: 1
+        description: State slug.
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTalentCardList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
   /api/talent/{id}:
     get:
       operationId: talent_retrieve
@@ -1691,6 +1822,16 @@ components:
       - slug
       - state_name
       - state_slug
+    CraftRef:
+      type: object
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+      required:
+      - slug
+      - title
     Crafts:
       type: object
       properties:
@@ -2169,6 +2310,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RecruiterReview'
+    PaginatedTalentCardList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentCard'
     PatchedExperienceWrite:
       type: object
       properties:
@@ -2753,6 +2913,53 @@ components:
         * `hidden` - Hidden
         * `failed` - Failed
         * `rejected` - Rejected
+    TalentCard:
+      type: object
+      description: 'A search result. A strict whitelist: no bio, experiences or any
+        private field.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        professional_name:
+          type: string
+          maxLength: 150
+        city:
+          allOf:
+          - $ref: '#/components/schemas/CityOut'
+          readOnly: true
+        years_experience:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+        genres:
+          type: array
+          items:
+            type: string
+            maxLength: 40
+        primary_craft:
+          allOf:
+          - $ref: '#/components/schemas/CraftRef'
+          nullable: true
+          readOnly: true
+        avatar:
+          allOf:
+          - $ref: '#/components/schemas/SignedUrls'
+          nullable: true
+          readOnly: true
+        is_available:
+          type: boolean
+          readOnly: true
+          description: False only if every one of the next 7 days is unavailable.
+      required:
+      - avatar
+      - city
+      - id
+      - is_available
+      - primary_craft
+      - professional_name
     TalentCraftOut:
       type: object
       properties:

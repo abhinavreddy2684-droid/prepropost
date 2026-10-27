@@ -39,6 +39,11 @@ class TalentFilters:
     genres: tuple[str, ...] = field(default_factory=tuple)
 
 
+# Filters on private fields (gender, date_of_birth). The public search never takes them; only an
+# approved recruiter may. They are the query-param names the API gates on, before any validation.
+RESTRICTED_FILTERS = ("gender", "min_age", "max_age")
+
+
 def _lookahead_end(today: date) -> date:
     return today + timedelta(days=settings.AVAILABILITY_CARD_LOOKAHEAD_DAYS)
 
@@ -61,7 +66,16 @@ def annotate_availability(
 
 
 def search_talents(filters: TalentFilters, *, today: date) -> QuerySet[TalentProfile]:
-    qs = TalentProfile.objects.filter(is_published=True).select_related("city__state")
+    """Published talent matching the filters, ready to render as cards in a fixed number of queries.
+
+    Every row carries `is_available`; the avatar is the approved one (it is only ever set by
+    approval) and the crafts are prefetched.
+    """
+    qs = (
+        TalentProfile.objects.filter(is_published=True)
+        .select_related("city__state", "avatar__media")
+        .prefetch_related("talent_crafts__craft")
+    )
 
     if filters.q:
         qs = qs.filter(
@@ -92,8 +106,9 @@ def search_talents(filters: TalentFilters, *, today: date) -> QuerySet[TalentPro
     if filters.max_age is not None:
         qs = qs.filter(date_of_birth__gt=years_before(today, filters.max_age + 1))
 
+    qs = annotate_availability(qs, today)
     if filters.available is not None:
-        qs = annotate_availability(qs, today).filter(is_available=filters.available)
+        qs = qs.filter(is_available=filters.available)
     return qs.order_by("-updated_at", "id")
 
 

@@ -4,14 +4,24 @@ from django.conf import settings
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
+from rest_framework.exceptions import NotFound as DrfNotFound
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.common.exceptions import NotFound, ValidationFailed
+from apps.accounts.authentication import OptionalJWTAuthentication
+from apps.common.api import DefaultCursorPagination
+from apps.common.exceptions import (
+    NotFound,
+    PermissionDenied,
+    Unauthenticated,
+    ValidationFailed,
+)
 from apps.common.serializers import ErrorEnvelopeSerializer
 from apps.media_library.serializers import signed_upload
 from apps.media_library.views import UPLOAD_SEQUENCE
+from apps.recruiters.selectors import is_verified_recruiter
 from apps.reference import selectors as reference_selectors
 
 from . import selectors, serializers, services
@@ -433,6 +443,75 @@ class AvatarSubmissionView(_OwnView):
 
 
 # --- public ----------------------------------------------------------------------------------
+
+
+class _SearchPagination(DefaultCursorPagination):
+    """Newest profile activity first; `id` makes the order total so pages never repeat a row."""
+
+    ordering = ("-updated_at", "id")
+
+    def decode_cursor(self, request):
+        try:
+            return super().decode_cursor(request)
+        except DrfNotFound as exc:  # DRF answers 404; a bad cursor is a bad parameter
+            raise ValidationFailed(
+                "Invalid cursor.", code="invalid_cursor", details={"cursor": ["Invalid cursor."]}
+            ) from exc
+
+
+class TalentSearchView(ListAPIView):
+    """Public listing. Signed-in callers are recognised so approved recruiters get more filters."""
+
+    authentication_classes = [OptionalJWTAuthentication]
+    permission_classes = [AllowAny]
+    serializer_class = serializers.TalentCardSerializer
+    pagination_class = _SearchPagination
+
+    def get_queryset(self):
+        self._require_access_to_restricted_filters()
+        params = serializers.TalentSearchParamsSerializer(data=self.request.query_params.dict())
+        if not params.is_valid():
+            raise ValidationFailed("Invalid search parameters.", details=params.errors)
+        return selectors.search_talents(params.to_filters(), today=timezone.localdate())
+
+    def _require_access_to_restricted_filters(self):
+        """Checked on which parameters were sent, before their values are validated."""
+        sent = [name for name in selectors.RESTRICTED_FILTERS if name in self.request.query_params]
+        if not sent:
+            return
+        if not self.request.user.is_authenticated:
+            raise Unauthenticated(
+                "Sign in to filter by gender or age.",
+                code="authentication_required",
+                details={"filters": sent},
+            )
+        if not is_verified_recruiter(self.request.user):
+            raise PermissionDenied(
+                "Only approved recruiters can filter by gender or age.",
+                code="recruiter_not_verified",
+                details={"filters": sent},
+            )
+
+    @extend_schema(
+        summary="Search published talent",
+        description=(
+            "Public: callable with or without a bearer token (an expired or invalid token is "
+            "treated as anonymous, never a 401). Newest profile activity first, cursor-paginated "
+            "(`limit` up to 100, `cursor` from `next`/`previous`). Cards carry no private "
+            "fields. `gender`, `min_age` and `max_age` are restricted: 401 if you are not signed "
+            "in, 403 unless you are an approved recruiter; the public listing never sends them."
+        ),
+        parameters=[serializers.TalentSearchParamsSerializer],
+        auth=[{"jwtAuth": []}, {}],
+        responses={
+            200: serializers.TalentCardSerializer(many=True),
+            400: _ERROR,
+            401: _ERROR,
+            403: _ERROR,
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
 class PublicTalentView(APIView):

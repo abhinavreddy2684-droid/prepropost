@@ -25,6 +25,8 @@ common  <-  accounts, reference  <-  media_library, talent, recruiters  <-  hiri
                                     notifications, analytics  ---(subscribe)--+
 ```
 
+* `talent` asks `recruiters.selectors.is_verified_recruiter` to gate the restricted search filters
+  (gender, age); `recruiters` never imports `talent`.
 * `hiring` asks `recruiters.selectors.is_verified_recruiter` and
   `talent.selectors.has_craft` - it never queries their tables.
 * `notifications` also subscribes to `recruiters.events` (review outcome: in-app + email) and
@@ -66,7 +68,7 @@ Services give friendly errors; constraints guarantee correctness under concurren
 |---|---|
 | New craft / city / state | Admin or `seed_reference`. No code change; bootstrap cache refreshes itself. |
 | New enum for the frontend | `register_enum("name", Choices)` in the owning app. |
-| New talent filter | One field on `TalentFilters` + one clause in `search_talents`. |
+| New talent filter | One field on `TalentFilters`, one clause in `search_talents`, one field on `TalentSearchParamsSerializer`. A filter on a private field also goes in `RESTRICTED_FILTERS`. |
 | Craft-specific fields (vocal range ...) | `TalentCraft.attributes` JSON (validate per craft later). |
 | New offer transition | One row in `hiring/state_machine.py` + a service + an event. |
 | New media purpose (e.g. a recruiter logo) | A `MediaPolicy` registered in the owning app's `ready()` (numbers in settings), a model that points at `Media`, and a subscriber for the media events of that purpose. Core does not change. |

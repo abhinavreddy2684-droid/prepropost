@@ -54,7 +54,8 @@ Every app under `apps/` is a bounded context with the same layers:
 | `admin.py` | Staff tooling | change workflow state except via services |
 
 Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_library`, `talent`,
-`recruiters` <- `hiring`. `notifications` subscribes to `hiring.events`, `recruiters.events` and
+`recruiters` <- `hiring`. One sibling edge exists: `talent` asks `recruiters.selectors` who is an
+approved recruiter (search filters); `recruiters` must never import `talent`. `notifications` subscribes to `hiring.events`, `recruiters.events` and
 `talent.events`; `analytics` only to `hiring.events`.
 
 - **Cross-app access goes through the other app's `selectors`/`services`.** Never query another
@@ -109,6 +110,12 @@ Dependency direction (no cycles): `common` <- `accounts`, `reference` <- `media_
   and add a test that the public one omits them.
 - **Money is integer minor units** (paise) plus a currency code. Never floats. Commission is
   computed once, with integer maths, and snapshotted on the engagement at funding time.
+- **Restricted search filters:** `gender`, `min_age` and `max_age` filter on private fields, so
+  `GET /api/talent` accepts them only from approved recruiters
+  (`recruiters.selectors.is_verified_recruiter`). Anonymous caller sending any of them -> 401;
+  signed-in non-approved caller -> 403; approved recruiter -> 200. The check is on which params
+  were sent, before their values are validated. Plain public requests never send them. Any new
+  filter on a private field joins `talent.selectors.RESTRICTED_FILTERS`.
 - **Availability:** only `tentative` and `unavailable` days are stored; "available" is implicit. A
   talent card shows Unavailable only if all of the next 7 days are unavailable.
 - **Exactly one primary craft per talent** (enforced by a partial unique index).
@@ -207,10 +214,12 @@ Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
   thumbnails), refused-upload notifications, signed GET URLs, public gallery and likes. Phase 3
   done (`feat/m2-media-moderation`): moderation services and events, admin review queues, email
   and in-app notices. M2 is complete.
-- M3-M4 are partly built below the API: `search_talents`, and the hiring services, events and
-  notifications exist, but have no endpoints yet (see `docs/CODE_WALKTHROUGH.md` section 7). M3:
-  search endpoints (advanced ranking deferred). M4: project and offer endpoints plus an offers
-  inbox.
+- Done (M3 list, `feat/m3-talent-search-endpoint`): public `GET /api/talent` (filters, text search,
+  cursor paging, card serializer, optional bearer auth, restricted gender/age filters). Still to do
+  in M3: advanced ranking (deferred) and the `search_run` analytics event.
+- M4 is built below the API: the hiring services, events and notifications exist, but have no
+  endpoints yet (see `docs/CODE_WALKTHROUGH.md` section 7). M4: project and offer endpoints plus
+  an offers inbox.
 - MVP-B (M5 escrow and ledger, M6 payouts, KYC, disputes, admin): **ask before starting.**
   M7: hardening and launch.
 - Product decisions are locked in the plan; do not reopen them without asking.

@@ -5,7 +5,7 @@ Progress (resume point):
 - [x] identity/auth (`apps/accounts`)
 - [x] profiles (`apps/talent`, `apps/recruiters`, `apps/reference`)
 - [x] media (`apps/media_library`)
-- [x] discovery (search selectors in `apps/talent`)
+- [x] discovery (search selector and `GET /api/talent` in `apps/talent`)
 - [x] projects/offers (`apps/hiring`)
 - [x] notifications + analytics
 - [x] 7. Built but not exposed, 8. Gaps and risks, final event table
@@ -226,16 +226,23 @@ No URLs, views or serializers exist. The only live link to the rest of the syste
 
 ## Module: discovery (`apps/talent/selectors.py`)
 
-There is no search endpoint yet (M3). The only discovery read exposed is `GET /api/talent/<uuid>` (documented under Talent). What exists is the selector:
+**GET /api/talent** (`TalentSearchView`, `ListAPIView`) is the search endpoint (M3 list). Routed before `talent/<uuid>`.
+- **Public**: `AllowAny`. Authentication is `accounts.authentication.OptionalJWTAuthentication`: a valid bearer token is recognised; a missing, expired, malformed or revoked one (or a suspended user) is anonymous, never a 401. The OpenAPI operation declares `security: jwtAuth or none`.
+- **Params** (`TalentSearchParamsSerializer`, read from `request.query_params.dict()` so an absent boolean stays "not sent"): `q` (max 100), `craft`, `state`, `city` (slugs; unknown but well-formed slugs just match nobody), `primary_craft_only`, `genres` (comma-separated, max 10, deduplicated), `available`, plus the restricted `gender`, `min_age`, `max_age` (0..120, `min_age <= max_age`). Anything invalid -> 400 `ValidationFailed` with `details` = field errors. `cursor` and `limit` belong to the paginator (`limit` clamps to 100; a bad cursor is 400 `invalid_cursor`).
+- **Restricted params**: checked first, on which names were *sent* (even blank or invalid), before values are validated. Not signed in -> 401 `authentication_required` (with `WWW-Authenticate: Bearer`); signed in but not `recruiters.selectors.is_verified_recruiter` -> 403 `recruiter_not_verified`; approved recruiter -> proceeds. `details.filters` lists the offending names. The list is `talent.selectors.RESTRICTED_FILTERS`. This adds the dependency `talent -> recruiters.selectors` (siblings; recruiters does not import talent, so there is no cycle).
+- **Pagination**: `_SearchPagination(DefaultCursorPagination)` with `ordering = ("-updated_at", "id")`, so `id` breaks ties between profiles updated at the same instant. Default page 24, `limit` max 100. No count query.
+- **Cards** (`TalentCardSerializer`, a field whitelist): `id, professional_name, city{id,slug,name,state_slug,state_name}, years_experience, genres, primary_craft{slug,title}|null, avatar (signed URLs of the approved photo only)|null, is_available`. Never `bio`, `experiences`, `full_name`, `gender`, `date_of_birth`, email or phone; a test asserts this for anonymous and recruiter callers. A card is rendered in a fixed number of queries (3 SELECTs: profiles with city/state/avatar/media joined, `talent_crafts`, `craft`), checked by a query-count test.
+
+The selector it calls:
 
 **`search_talents(filters: TalentFilters, *, today) -> QuerySet[TalentProfile]`**
-- Base: `TalentProfile.objects.filter(is_published=True).select_related("city__state")`. No prefetch of crafts or experiences, so a card serializer that touches `talent_crafts` or the avatar will do N+1.
+- Base: `TalentProfile.objects.filter(is_published=True).select_related("city__state", "avatar__media").prefetch_related("talent_crafts__craft")`, so cards need no per-row queries. `avatar` is set only by approval, so it is always the approved photo. Experiences are not prefetched (cards do not show them).
 - `q`: `icontains` on `professional_name` OR `bio` OR `city__name`. `full_name` is deliberately not searched by `q`.
 - `craft_slug`: `Exists(TalentCraft where talent=OuterRef(pk), craft__slug=...)`, with `is_primary=True` when `primary_craft_only`.
 - `city_slug`, `state_slug` (`city__state__slug`), `gender` (private field, filter only), `genres` (`genres__overlap`, uses the GIN index).
 - Age: `min_age` -> `date_of_birth <= years_before(today, min_age)`; `max_age` -> `date_of_birth > years_before(today, max_age+1)`. Null DOB rows drop out whenever either bound is set.
-- `available`: `annotate_availability` counts UNAVAILABLE override rows with `today <= date < today+7` (`AVAILABILITY_CARD_LOOKAHEAD_DAYS`), and `is_available = blocked_days < 7`. This matches the "Unavailable only if all 7 days are blocked" rule. Tentative days do not count. It is a JOIN with `Count`, so combined with other joins it relies on Exists subqueries to avoid row multiplication (it does).
-- Ordering: `-updated_at, id`. No relevance ranking, and `updated_at` changes on any edit. Not paginated here; the cursor pagination default orders by `-created_at`, which conflicts with this ordering unless the future view overrides it (the recruiter review view shows the override pattern).
+- `is_available` is annotated on every row (the card shows it); the `available` filter then just filters on it. `annotate_availability` counts UNAVAILABLE override rows with `today <= date < today+7` (`AVAILABILITY_CARD_LOOKAHEAD_DAYS`), and `is_available = blocked_days < 7`. This matches the "Unavailable only if all 7 days are blocked" rule. Tentative days do not count. It is a JOIN with `Count`, so combined with other joins it relies on Exists subqueries to avoid row multiplication (it does).
+- Ordering: `-updated_at, id`. No relevance ranking, and `updated_at` changes on any edit. The selector does not paginate; the view's paginator uses the same ordering.
 - `TalentFilters` is a frozen dataclass; each filter = one field + one clause.
 
 Related: `annotate_availability(qs, today)` (above); `common/dates.years_before(date, years)`; `common/text.normalize_tags` (used for genres on write).
@@ -302,7 +309,7 @@ Hiring events share `_OfferEvent` fields: `offer_id, project_id, recruiter_id, t
 ## 7. Built but not yet exposed
 
 - **Hiring (M4)**: all of `create_project`, `create_offer`, `send_offer`, `accept_offer`, `decline_offer`, `withdraw_offer`, `expire_due_offers` (only the last runs, via beat). Missing: project CRUD and close, offer inbox selectors for both sides, offer detail with `OfferEvent` history, permissions (`IsVerifiedRecruiter` exists in `recruiters/permissions.py` but nothing imports it), serializers (money in minor units), urls.
-- **Discovery (M3)**: `talent.selectors.search_talents`, `TalentFilters`, `annotate_availability` (nothing calls them). Missing: view, filter serializer, card serializer, pagination ordering, analytics `search_run`.
+- **Discovery (M3)**: the list endpoint `GET /api/talent` is built. Missing: analytics `search_run`, advanced ranking (deferred).
 - **Media (M2)**: `like_media`, `unlike_media`, `public_gallery`, the whole `Media` lifecycle (upload, processing, status moves), `MediaLike`. Only `get_ready_avatar` is in use, and no way to create an avatar `Media` row exists except admin or shell.
 - **Notifications**: all handlers run and rows are written, but there is no inbox endpoint, no `mark_read` caller, no unread count.
 - **Events with no subscriber**: `UserRegistered`, `EmailVerified`.
@@ -317,7 +324,7 @@ Hiring events share `_OfferEvent` fields: `offer_id, project_id, recruiter_id, t
 - **Unique-race 500s on profile creation.** `create_talent_profile` and `create_recruiter_profile` check existence then insert without catching `IntegrityError` (unlike `register_user` and `create_offer`). Concurrent POSTs would 500 on the 1:1 unique.
 - **`create_offer(**terms)` and `create_project(**fields)` are unvalidated pass-throughs.** There is no allowlist (talent and recruiter services have one). A caller could pass `status`, `expires_at` or a duplicate `currency` kwarg. Dates and revision rounds hit DB check constraints as 500s rather than 400s. `create_project` needs only a recruiter profile, not an approved one.
 - **Offer sending is lenient.** `send_offer` re-checks verification but not that the project is still open or the talent is still published, so a draft can go out after either changes. `withdraw_offer` has no verification check (probably fine). `ttl_days` has no upper bound or type check.
-- **Search will be N+1 by default.** `search_talents` selects `city__state` only, so a card showing crafts, or an avatar, will query per row. Its ordering (`-updated_at, id`) conflicts with the default cursor paginator's `-created_at`, so the view must override ordering. `q` uses `icontains` over `bio` (no index).
+- **Search text is unindexed.** `q` uses `icontains` over `professional_name`, `bio` and `city__name` (no index), fine for the current size. Cursor pagination encodes only the first ordering field (`updated_at`) and an offset for ties, so a row edited between page loads can move; acceptable for a browse list.
 - **Duplicate and redundant queries on the talent endpoints.** `IsTalent` queries the profile, `_own()` queries it again, and `_private()` queries it a third time with prefetches. `/api/me` runs one query per registered role. `set_availability` does one `update_or_create` per day (up to 366). Roles are not cached.
 - **Shared throttle bucket.** `auth_login` (10/min) is the scope for login, logout, refresh and verify-email, so ScopedRateThrottle shares one counter per client across them. Refresh now runs on every page load, so it can be throttled by login attempts (and the reverse).
 - **Inconsistent patterns.** Some validation is in views instead of services (availability range in `AvailabilityView.get`, city/craft resolution), `update_talent_profile` does not lock the row while the recruiter equivalent does, profile edits by an approved recruiter keep approval, `get_experience` and `public_gallery` are dead code, and no talent or recruiter state change publishes events.
