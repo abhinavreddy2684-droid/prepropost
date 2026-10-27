@@ -59,13 +59,53 @@ class TestProfileValidation:
             {"full_name": "   "},
             {"professional_name": ""},
             {"professional_name": "x" * 151},
-            {"bio": "x" * 2001},
+            {"bio": "x" * 1001},
         ],
     )
     def test_update_rejects_values_the_database_would_choke_on(self, data):
         talent = TalentProfileFactory()
         with pytest.raises(ValidationFailed):
             services.update_talent_profile(talent=talent, data=data)
+
+    def test_bio_of_exactly_the_limit_is_accepted(self):
+        talent = TalentProfileFactory()
+        services.update_talent_profile(talent=talent, data={"bio": "x" * 1000})
+        talent.refresh_from_db()
+        assert len(talent.bio) == 1000
+
+    def test_over_limit_bio_is_rejected_on_the_bio_field(self):
+        talent = TalentProfileFactory(bio="kept")
+        with pytest.raises(ValidationFailed) as exc:
+            services.update_talent_profile(talent=talent, data={"bio": "x" * 1001})
+        assert exc.value.details == {"field": "bio"}
+        talent.refresh_from_db()
+        assert talent.bio == "kept"
+
+    def test_legacy_long_bio_does_not_block_editing_other_fields(self):
+        talent = TalentProfileFactory(bio="y" * 2000)  # stored before the 1000 limit
+        services.update_talent_profile(talent=talent, data={"professional_name": "Renamed"})
+        talent.refresh_from_db()
+        assert talent.professional_name == "Renamed"
+        assert talent.bio == "y" * 2000
+
+    def test_legacy_long_bio_can_still_be_shortened_but_not_resent_over_limit(self):
+        talent = TalentProfileFactory(bio="y" * 2000)
+        with pytest.raises(ValidationFailed):
+            services.update_talent_profile(talent=talent, data={"bio": "z" * 1001})
+        services.update_talent_profile(talent=talent, data={"bio": "short"})
+        talent.refresh_from_db()
+        assert talent.bio == "short"
+
+    def test_create_applies_the_same_limit(self, django_user_model):
+        user = django_user_model.objects.create_user("b@example.com", "x")
+        with pytest.raises(ValidationFailed) as exc:
+            services.create_talent_profile(
+                user=user, full_name="A B", professional_name="AB", bio="x" * 1001
+            )
+        assert exc.value.details == {"field": "bio"}
+        services.create_talent_profile(
+            user=user, full_name="A B", professional_name="AB", bio="x" * 1000
+        )
 
     def test_update_accepts_boundaries_and_trims_names(self):
         talent = TalentProfileFactory()

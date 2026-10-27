@@ -114,6 +114,9 @@ approved recruiter (search filters); `recruiters` must never import `talent`. `n
   and add a test that the public one omits them.
 - **Money is integer minor units** (paise) plus a currency code. Never floats. Commission is
   computed once, with integer maths, and snapshotted on the engagement at funding time.
+- **Bio limit:** `TALENT_BIO_MAX_CHARS` (1000, in settings) caps a talent bio in the API and in
+  `talent.services`, checked only when `bio` is part of the write so legacy longer bios still allow
+  other edits. Existing rows are never truncated. The search card returns the full bio.
 - **Restricted search filters:** `gender`, `min_age` and `max_age` filter on private fields, so
   `GET /api/talent` accepts them only from approved recruiters
   (`recruiters.selectors.is_verified_recruiter`). Anonymous caller sending any of them -> 401;

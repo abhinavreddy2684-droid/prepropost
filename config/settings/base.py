@@ -202,6 +202,7 @@ AVAILABILITY_CARD_LOOKAHEAD_DAYS = 7
 EMAIL_VERIFICATION_TTL_HOURS = 48
 # Completeness items a talent must have before the profile can be published (see
 # apps.talent.selectors.CompletenessItem for the full list that feeds the percentage).
+TALENT_BIO_MAX_CHARS = 1000  # API and service limit; the column stays an unbounded TextField
 TALENT_REQUIRED_FOR_PUBLISH = ("primary_craft", "city")
 # Share of the completeness percentage each item is worth. Every item must be listed.
 TALENT_COMPLETENESS_WEIGHTS = {

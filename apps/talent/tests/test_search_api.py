@@ -24,6 +24,7 @@ URL = "/api/talent"
 CARD_FIELDS = {
     "id",
     "professional_name",
+    "bio",
     "city",
     "years_experience",
     "genres",
@@ -104,6 +105,18 @@ class TestListing:
         assert card["primary_craft"] == {"slug": "actor", "title": "Actor"}
         assert card["avatar"] is None
         assert card["is_available"] is True
+
+    def test_card_returns_the_full_bio(self, client):
+        full = "b" * 1000
+        TalentProfileFactory(professional_name="long", bio=full)
+        TalentProfileFactory(professional_name="none")
+        cards = {c["professional_name"]: c for c in client.get(URL).json()["results"]}
+        assert cards["long"]["bio"] == full
+        assert cards["none"]["bio"] == ""
+
+    def test_a_legacy_bio_over_the_limit_is_returned_untruncated(self, client):
+        TalentProfileFactory(bio="l" * 1500)
+        assert len(client.get(URL).json()["results"][0]["bio"]) == 1500
 
     def test_talent_without_city_or_primary_craft(self, client):
         TalentProfileFactory()
@@ -338,12 +351,12 @@ class TestPrivacy:
                 "+919999900000",
                 "1990-04-05",
                 "female",
-                "distinctive biography",
                 "Distinctive Role",
                 "Distinct Studio",
             ):
                 assert secret not in body
-            for forbidden in ("full_name", "gender", "date_of_birth", "email", "phone", "bio"):
+            assert card["bio"] == "A very distinctive biography sentence."
+            for forbidden in ("full_name", "gender", "date_of_birth", "email", "phone"):
                 assert forbidden not in card
                 assert f'"{forbidden}"' not in body
             assert "experiences" not in card
