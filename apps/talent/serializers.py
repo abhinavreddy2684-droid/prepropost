@@ -5,6 +5,7 @@ reach a public response. Public output is a whitelist of fields on `PublicTalent
 `PrivateTalentSerializer` (the owner's own view) extends that whitelist explicitly.
 """
 
+from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -97,7 +98,8 @@ class PublicTalentSerializer(serializers.ModelSerializer):
 
 
 class TalentCardSerializer(serializers.ModelSerializer):
-    """A search result. A strict whitelist: no bio, experiences or any private field."""
+    """A search result. A strict whitelist: includes the full bio, never experiences or any private
+    field (full_name, gender, date_of_birth, email, phone)."""
 
     city = CityOutSerializer(read_only=True)
     primary_craft = serializers.SerializerMethodField()
@@ -111,6 +113,7 @@ class TalentCardSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "professional_name",
+            "bio",
             "city",
             "years_experience",
             "genres",
@@ -261,7 +264,7 @@ class PrivateTalentSerializer(PublicTalentSerializer):
 class TalentUpdateSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150)
     professional_name = serializers.CharField(max_length=150)
-    bio = serializers.CharField(max_length=2000, allow_blank=True)
+    bio = serializers.CharField(max_length=settings.TALENT_BIO_MAX_CHARS, allow_blank=True)
     city_id = serializers.UUIDField(allow_null=True)
     years_experience = serializers.IntegerField(allow_null=True)
     genres = serializers.ListField(child=serializers.CharField(max_length=40), max_length=20)

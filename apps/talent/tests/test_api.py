@@ -5,6 +5,7 @@ import pytest
 from django.utils import timezone
 
 from apps.reference.tests.factories import CityFactory, CraftFactory
+from apps.talent.models import TalentProfile
 
 from .factories import TalentProfileFactory, talent_with_craft
 
@@ -157,6 +158,38 @@ class TestProfileEdits:
         assert response.status_code == 200
         assert response.json()["bio"] == "New bio"
         assert response.json()["professional_name"] == before
+
+    def test_bio_of_exactly_1000_characters_is_accepted(self, talent_client):
+        api, _ = talent_client
+        response = api.patch("/api/talent/me", {"bio": "x" * 1000}, format="json")
+        assert response.status_code == 200
+        assert len(response.json()["bio"]) == 1000
+
+    def test_bio_over_1000_characters_is_400_on_the_bio_field(self, talent_client):
+        api, talent = talent_client
+        response = api.patch("/api/talent/me", {"bio": "x" * 1001}, format="json")
+        assert response.status_code == 400
+        assert _code(response) == "validation_failed"
+        assert "bio" in response.json()["error"]["details"]
+        talent.refresh_from_db()
+        assert talent.bio != "x" * 1001
+
+    def test_create_rejects_an_over_limit_bio(self, auth_client):
+        api, _ = auth_client()
+        payload = {"full_name": "A B", "professional_name": "AB", "bio": "x" * 1001}
+        response = api.post("/api/talent/me", payload, format="json")
+        assert response.status_code == 400
+        assert _code(response) == "validation_failed"
+
+    def test_legacy_long_bio_does_not_block_editing_another_field(self, talent_client):
+        api, talent = talent_client
+        TalentProfile.objects.filter(pk=talent.pk).update(bio="y" * 1500)
+        response = api.patch("/api/talent/me", {"professional_name": "Renamed"}, format="json")
+        assert response.status_code == 200
+        assert response.json()["professional_name"] == "Renamed"
+        assert len(response.json()["bio"]) == 1500
+        over = api.patch("/api/talent/me", {"bio": "z" * 1001}, format="json")
+        assert over.status_code == 400
 
     def test_protected_fields_cannot_be_set(self, talent_client):
         api, talent = talent_client

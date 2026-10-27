@@ -2404,7 +2404,7 @@ components:
           maxLength: 150
         bio:
           type: string
-          maxLength: 2000
+          maxLength: 1000
         city_id:
           type: string
           format: uuid
@@ -2915,8 +2915,9 @@ components:
         * `rejected` - Rejected
     TalentCard:
       type: object
-      description: 'A search result. A strict whitelist: no bio, experiences or any
-        private field.'
+      description: |-
+        A search result. A strict whitelist: includes the full bio, never experiences or any private
+        field (full_name, gender, date_of_birth, email, phone).
       properties:
         id:
           type: string
@@ -2925,6 +2926,8 @@ components:
         professional_name:
           type: string
           maxLength: 150
+        bio:
+          type: string
         city:
           allOf:
           - $ref: '#/components/schemas/CityOut'
@@ -2985,7 +2988,7 @@ components:
           maxLength: 150
         bio:
           type: string
-          maxLength: 2000
+          maxLength: 1000
         city_id:
           type: string
           format: uuid

@@ -67,7 +67,7 @@ def create_talent_profile(
         raise Conflict("This account already has a talent profile.")
     profile = TalentProfile(user=user, full_name=full_name, professional_name=professional_name)
     _apply_fields(profile, extra)
-    _validate_profile(profile)
+    _validate_profile(profile, bio_sent="bio" in extra)
     profile.save()
     return profile
 
@@ -79,19 +79,21 @@ def update_talent_profile(*, talent: TalentProfile, data: Mapping) -> TalentProf
     talent = TalentProfile.objects.select_for_update().get(pk=talent.pk)
     before = _blocking_before(talent)
     _apply_fields(talent, data)
-    _validate_profile(talent)
+    _validate_profile(talent, bio_sent="bio" in data)
     talent.save(update_fields=[*data, "updated_at"])
     _require_still_publishable(talent, before)
     return talent
 
 
 _MAX_NAME_LENGTH = 150  # mirrors the column size
-_MAX_BIO_LENGTH = 2000  # matches the API; the column itself is unbounded
 _MAX_YEARS_EXPERIENCE = 80  # mirrors talent_years_experience_sane
 
 
-def _validate_profile(talent: TalentProfile) -> None:
-    """Reject what the database would otherwise reject as a 500 (or silently accept)."""
+def _validate_profile(talent: TalentProfile, *, bio_sent: bool) -> None:
+    """Reject what the database would otherwise reject as a 500 (or silently accept).
+
+    The bio limit applies only when the bio is part of this write, so a legacy bio longer than
+    the limit does not block edits to other fields."""
     for field in ("full_name", "professional_name"):
         value = (getattr(talent, field) or "").strip()
         if not value:
@@ -101,9 +103,10 @@ def _validate_profile(talent: TalentProfile) -> None:
                 f"{field} must be at most {_MAX_NAME_LENGTH} characters.", details={"field": field}
             )
         setattr(talent, field, value)
-    if len(talent.bio or "") > _MAX_BIO_LENGTH:
+    if bio_sent and len(talent.bio or "") > settings.TALENT_BIO_MAX_CHARS:
         raise ValidationFailed(
-            f"bio must be at most {_MAX_BIO_LENGTH} characters.", details={"field": "bio"}
+            f"bio must be at most {settings.TALENT_BIO_MAX_CHARS} characters.",
+            details={"field": "bio"},
         )
     if talent.gender and talent.gender not in TalentProfile.Gender.values:
         raise ValidationFailed(f"Unknown gender '{talent.gender}'.", details={"field": "gender"})
