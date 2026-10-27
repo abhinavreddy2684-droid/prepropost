@@ -121,3 +121,27 @@ class TestAvailabilityRule:
                 talent=talent, date=TODAY + timedelta(days=i), status="unavailable"
             )
         assert search(available=True) == {"later"}
+
+
+class TestCardReadyRows:
+    def test_every_row_carries_is_available_even_without_the_filter(self):
+        free = TalentProfileFactory(professional_name="free")
+        booked = TalentProfileFactory(professional_name="booked")
+        for i in range(7):
+            AvailabilityOverride.objects.create(
+                talent=booked, date=TODAY + timedelta(days=i), status="unavailable"
+            )
+        rows = {
+            t.professional_name: t.is_available
+            for t in search_talents(TalentFilters(), today=TODAY)
+        }
+        assert rows == {"free": True, "booked": False}
+        assert free.pk
+
+    def test_cards_render_in_a_fixed_number_of_queries(self, django_assert_max_num_queries):
+        craft = CraftFactory()
+        for _ in range(8):
+            talent_with_craft(craft, city=CityFactory())
+        with django_assert_max_num_queries(3):  # rows (relations joined) + talent_crafts + crafts
+            for t in search_talents(TalentFilters(), today=TODAY):
+                _ = (t.city.state.slug, [tc.craft.slug for tc in t.talent_crafts.all()], t.avatar)
