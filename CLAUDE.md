@@ -34,7 +34,8 @@ so SQLite will not work.
 2. `pytest` passes.
 3. `makemigrations --check --dry-run` reports no changes.
 4. New behaviour has tests. Bug fixes start with a failing test.
-5. OpenAPI updated for any changed endpoint (`@extend_schema`; check `/api/docs/`).
+5. OpenAPI updated for any changed endpoint (`@extend_schema`; check `/api/docs/`), then
+   `make schema` and commit `openapi.yaml` (`make schema-check` must pass).
 6. Docs are updated if a convention or public contract changed.
 
 Never commit with failing tests. Never skip hooks or CI.
@@ -184,8 +185,8 @@ Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
 
 - Done (`v0.1.0`): foundation, data model, reference data and bootstrap endpoint, profiles,
   search selector, offer lifecycle, notifications, analytics events.
-- Done (M1.1-M1.3): JWT auth (simplejwt, rotating blacklisted refresh), email verification,
-  crafts and locations, talent onboarding + profile + experience + availability endpoints,
+- Done (M1.1-M1.3): JWT auth (simplejwt, rotating blacklisted refresh in an HttpOnly cookie),
+  email verification, crafts and locations, talent onboarding + profile + experience + availability endpoints,
   OpenAPI. Phone OTP deferred.
 - Done (M1.4): recruiter profile endpoints (`/api/recruiters/me`, submit for review), staff review
   queue with approve/reject endpoints and Django admin actions. Email must be verified to submit;
@@ -216,10 +217,22 @@ Full plan, pacing and open items: `docs/DELIVERY_PLAN.md`. Current state:
 
 ## Frontend contract
 
-The React frontend is at `abhinavreddy2684-droid/PR.Pre.Pro.Post` (folder `24-crafts`). It loads
-reference data once from `GET /api/bootstrap` into Redux, refers to crafts by `slug`, and
-revalidates with the ETag. Keep API responses stable and documented through OpenAPI
-(`/api/docs/`) so a typed client can be generated.
+The React frontend is at `abhinavreddy2684-droid/PR.Pre.Pro.Post`. It loads reference data once
+from `GET /api/bootstrap`, refers to crafts by `slug`, and revalidates with the ETag
+(`If-None-Match`; CORS allows it and exposes `ETag`). Keep API responses stable and documented
+through OpenAPI (`/api/docs/`, committed as `openapi.yaml`) so a typed client can be generated.
+
+Auth contract:
+
+- The **access token** is returned in JSON bodies. The client keeps it **in memory** (never
+  localStorage) and sends `Authorization: Bearer <access>`.
+- The **refresh token** is only ever an **HttpOnly cookie** (`Path=/api/auth/`, `SameSite=Lax`,
+  Secure in production, max-age = refresh lifetime, 1 day by default). It is never in a response
+  body and a body token is never accepted. `POST /api/auth/refresh` and `/logout` take no body.
+- Calls use `credentials: "include"`. CORS allows only `CORS_ALLOWED_ORIGINS` (default
+  `FRONTEND_URL`), never all origins.
+- Set and clear the cookie only through `apps/accounts/cookies.py`. After changing an endpoint run
+  `make schema` and commit `openapi.yaml`; `make schema-check` must pass.
 
 ## When unsure
 

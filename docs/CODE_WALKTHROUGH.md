@@ -47,6 +47,8 @@ Layout note: the doc is grouped per module. Each module section holds its endpoi
 ### Endpoints
 All under `/api/`. Credential views extend `_PublicView` (no auth, `AllowAny`, `ScopedRateThrottle`).
 
+**Token delivery.** The access token is in the JSON body and the client keeps it in memory, sending it as `Authorization: Bearer`. The refresh token is **never in a body** and a body token is never read: it is an HttpOnly cookie. `accounts/cookies.py` is the only place that sets, reads or clears it (`set_refresh_cookie`, `clear_refresh_cookie`, `read_refresh_cookie`). Services stay HTTP-agnostic: `issue_tokens` returns both tokens and the view (`_with_refresh_cookie`) puts `access` in the body and `refresh` in the cookie. Cookie attributes come from `AUTH_REFRESH_COOKIE_*` settings: name `refresh_token`, `HttpOnly`, `Path=/api/auth/` (so it is sent only to the auth endpoints), `SameSite=Lax`, `Secure` off locally and on in `config.settings.production`, `max-age` = `SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"]`. Cross-origin calls need CORS with credentials (`CorsMiddleware`, `CORS_ALLOWED_ORIGINS` defaulting to `FRONTEND_URL`, `CORS_URLS_REGEX=^/api/.*$`, never allow-all); the frontend must send `credentials: "include"`. A browser session is: register/login -> keep `access` in memory; on 401 or page load `POST /api/auth/refresh` (cookie, no body) -> new `access`; logout -> `POST /api/auth/logout`, then drop the in-memory token.
+
 **POST /api/auth/register** (public, throttle `auth_register` 5/min)
 - Request: `email` (CharField max 254), `password` (max 128, whitespace kept, write-only). Serializer only checks presence/length.
 - Flow:
@@ -59,21 +61,21 @@ All under `/api/`. Credential views extend `_PublicView` (no auth, `AllowAny`, `
      - publishes `UserRegistered(user_id)` and `EmailVerificationRequested(user_id)`, both deferred to commit.
   3. After commit: `accounts.subscribers._send_verification_email` (only subscriber of `EmailVerificationRequested`) calls `tasks.send_verification_email.delay(user_id)`. The Celery task loads the user via `selectors.get_user`, skips if missing or verified, renders `accounts/email/verify_email.txt` with `build_verification_url`, and `send_mail(...)` (console backend by default).
   4. Verification token (`build_verification_token`): `django.core.signing.dumps({"uid","email"}, salt="accounts.email-verification")`. Signed, timestamped, not stored in the DB. URL is `{FRONTEND_URL}/verify-email?token=...`.
-  5. `services.issue_tokens(user)` -> `RefreshToken.for_user` (simplejwt; writes an OutstandingToken row via the blacklist app) -> `{access, refresh}`.
-  6. Response 201: `{access, refresh, user:{id,email,email_verified,roles}}`; `roles` is `[]` at this point. No subscriber currently acts on `UserRegistered`.
+  5. `services.issue_tokens(user)` -> `RefreshToken.for_user` (simplejwt; writes an OutstandingToken row via the blacklist app) -> `{access, refresh}`; the view keeps `access` for the body and sets `refresh` as the cookie.
+  6. Response 201: `{access, user:{id,email,email_verified,roles}}` plus the `Set-Cookie` refresh cookie; `roles` is `[]` at this point. No subscriber currently acts on `UserRegistered`.
 - Errors: 400 (serializer, invalid email, weak password), 409 `email_taken`, 429 throttle.
 - Note: the user is logged in immediately and the email is unverified. Gated actions use `IsEmailVerified`.
 
 **POST /api/auth/login** (public, `auth_login` 10/min)
-- Request: `email`, `password`. `services.login_user` (atomic): `django.contrib.auth.authenticate(email=normalized, password)`; `None` -> `Unauthenticated("Invalid email or password.")` (same message for unknown email, wrong password and suspended, since `is_active` is False). Then `update_last_login`. View returns `issue_tokens` -> `{access, refresh}`. No events.
+- Request: `email`, `password`. `services.login_user` (atomic): `django.contrib.auth.authenticate(email=normalized, password)`; `None` -> `Unauthenticated("Invalid email or password.")` (same message for unknown email, wrong password and suspended, since `is_active` is False). Then `update_last_login`. View returns `{access}` and sets the refresh cookie. No events.
 - Errors: 401 with `WWW-Authenticate: Bearer` header (added in the exception handler), 400, 429.
 
-**POST /api/auth/refresh** (`RefreshView(TokenRefreshView)`, scope `auth_login`)
-- simplejwt's view. With `ROTATE_REFRESH_TOKENS` and `BLACKLIST_AFTER_ROTATION` it blacklists the old refresh and returns a new pair. Access lifetime 15 min and refresh 14 days (env-tunable). It does not extend `_PublicView`; simplejwt's base view already disables authentication and permissions. No service in our code. Errors are simplejwt's 401 (wrapped by the handler).
-- Gap: `RefreshView` has no `@extend_schema`.
+**POST /api/auth/refresh** (`RefreshView(_PublicView)`, scope `auth_login`)
+- No body. The view reads the refresh cookie and calls `services.refresh_tokens(refresh_token=...)` (atomic): empty -> `Unauthenticated(code=refresh_token_missing)`; otherwise it reads the `jti` unverified, row-locks that `OutstandingToken` (so two concurrent refreshes cannot both rotate one token), then verifies the token fully (signature, expiry, type, blacklist), loads the user (missing or suspended -> 401), blacklists the old token and returns `issue_tokens(user)`. Any bad token is one generic 401 `invalid_refresh_token`. Response: `{access}` plus a rotated cookie. Access lifetime 15 min; refresh lifetime `JWT_REFRESH_DAYS` (default 1).
+- It replaces simplejwt's `TokenRefreshView`. A refresh token in the body is ignored.
 
 **POST /api/auth/logout** (public, `auth_login`)
-- Request: `refresh`. `services.logout` (atomic): `RefreshToken(refresh).blacklist()`, with `TokenError` suppressed, so it is idempotent and an invalid token is a silent 204. Access tokens stay valid until expiry (15 min).
+- No body. `services.logout(refresh_token=<cookie>)` (atomic): `RefreshToken(refresh).blacklist()`, with `TokenError` suppressed, so it is idempotent: no cookie or an invalid one is still 204. The view always clears the cookie (same path, domain and samesite). Access tokens stay valid until expiry (15 min).
 
 **POST /api/auth/verify-email** (public, `auth_login`)
 - Request: `token`. `services.verify_email` (atomic): `signing.loads(token, salt, max_age=EMAIL_VERIFICATION_TTL_HOURS*3600)`. `SignatureExpired` -> `ValidationFailed(code=token_expired)`, `BadSignature` -> `invalid_token`. Then `User.objects.select_for_update().filter(pk=uid)`; user missing or `user.email != payload.email` -> `invalid_token`. Already verified -> returns the user (idempotent, no event). Otherwise sets `email_verified_at`, saves `update_fields=[email_verified_at, updated_at]`, publishes `EmailVerified(user_id)` (no subscriber yet). Response: `_me(user)`.
@@ -87,7 +89,8 @@ All under `/api/`. Credential views extend `_PublicView` (no auth, `AllowAny`, `
 ### Services (`accounts/services.py`)
 - `register_user(email, password) -> User`: validates, inserts User; emits `UserRegistered`, `EmailVerificationRequested`.
 - `login_user(email, password) -> User`: authenticates; updates `last_login`.
-- `issue_tokens(user) -> dict`: mints a refresh and access pair; writes an OutstandingToken row.
+- `issue_tokens(user) -> dict`: mints a refresh and access pair; writes an OutstandingToken row. The caller must keep `refresh` out of bodies.
+- `refresh_tokens(refresh_token) -> dict`: rotates a refresh token (locks, verifies, blacklists the old one, issues a new pair); `Unauthenticated` on any bad token.
 - `logout(refresh_token)`: blacklists the token (DB write to BlacklistedToken); no-op on invalid.
 - `build_verification_token(user)` / `build_verification_url(user)`: pure; signed token and the frontend link.
 - `request_email_verification(user)`: emits `EmailVerificationRequested`; 409 if verified.
@@ -316,5 +319,5 @@ Hiring events share `_OfferEvent` fields: `offer_id, project_id, recruiter_id, t
 - **Offer sending is lenient.** `send_offer` re-checks verification but not that the project is still open or the talent is still published, so a draft can go out after either changes. `withdraw_offer` has no verification check (probably fine). `ttl_days` has no upper bound or type check.
 - **Search will be N+1 by default.** `search_talents` selects `city__state` only, so a card showing crafts, or an avatar, will query per row. Its ordering (`-updated_at, id`) conflicts with the default cursor paginator's `-created_at`, so the view must override ordering. `q` uses `icontains` over `bio` (no index).
 - **Duplicate and redundant queries on the talent endpoints.** `IsTalent` queries the profile, `_own()` queries it again, and `_private()` queries it a third time with prefetches. `/api/me` runs one query per registered role. `set_availability` does one `update_or_create` per day (up to 366). Roles are not cached.
-- **Shared throttle bucket.** `auth_login` (10/min) is the scope for login, logout, refresh and verify-email, so ScopedRateThrottle shares one counter per client across them. Normal refresh traffic can be throttled by login attempts.
-- **Inconsistent patterns.** Some validation is in views instead of services (availability range in `AvailabilityView.get`, city/craft resolution), `update_talent_profile` does not lock the row while the recruiter equivalent does, profile edits by an approved recruiter keep approval, `RefreshView` has no OpenAPI schema, `get_experience` and `public_gallery` are dead code, and no talent or recruiter state change publishes events.
+- **Shared throttle bucket.** `auth_login` (10/min) is the scope for login, logout, refresh and verify-email, so ScopedRateThrottle shares one counter per client across them. Refresh now runs on every page load, so it can be throttled by login attempts (and the reverse).
+- **Inconsistent patterns.** Some validation is in views instead of services (availability range in `AvailabilityView.get`, city/craft resolution), `update_talent_profile` does not lock the row while the recruiter equivalent does, profile edits by an approved recruiter keep approval, `get_experience` and `public_gallery` are dead code, and no talent or recruiter state change publishes events.
