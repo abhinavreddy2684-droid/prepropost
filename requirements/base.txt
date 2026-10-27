@@ -10,3 +10,4 @@ djangorestframework-simplejwt>=5.3
 boto3>=1.35
 Pillow>=11.0
 filetype>=1.2
+django-cors-headers>=4.4

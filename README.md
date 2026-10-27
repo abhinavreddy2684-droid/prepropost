@@ -21,7 +21,7 @@ set `DATABASE_URL` and `DJANGO_SECRET_KEY`, then `python manage.py migrate && py
 * `GET /api/bootstrap`: crafts, locations, enums (ETag + cache headers)
 * `GET /healthz`, `GET /readyz`
 * Auth: `POST /api/auth/{register,login,refresh,logout,verify-email,resend-verification}`,
-  `GET /api/me` (account + roles). Bearer JWT; refresh tokens rotate and are blacklisted.
+  `GET /api/me` (account + roles). Bearer access token in memory; the rotating, blacklisted refresh token is an HttpOnly cookie.
 * Talent: `GET/POST/PATCH /api/talent/me`, `PUT /api/talent/me/{crafts,avatar,publish}`,
   `POST /api/talent/me/onboarding/complete`, `/api/talent/me/experiences`,
   `/api/talent/me/availability`, and the public `GET /api/talent/<id>`

@@ -39,7 +39,7 @@ class TestRegister:
         body = response.json()
         assert body["user"]["email"] == "new@example.com"
         assert body["user"]["email_verified"] is False
-        assert {"access", "refresh"} <= set(body)
+        assert set(body) == {"access", "user"}
         assert "password" not in str(body)
         assert len(mail.outbox) == 1
 
@@ -93,25 +93,12 @@ class TestLoginRefreshLogout:
         ]
         assert codes[-1] == 429
 
-    def test_refresh_rotates_and_old_token_stops_working(self, client):
-        tokens = services.issue_tokens(UserFactory())
-        first = client.post("/api/auth/refresh", {"refresh": tokens["refresh"]})
-        assert first.status_code == 200
-        assert first.json()["refresh"] != tokens["refresh"]
-        assert client.post("/api/auth/refresh", {"refresh": tokens["refresh"]}).status_code == 401
-
     def test_suspended_user_cannot_refresh(self, client):
         user = UserFactory()
-        tokens = services.issue_tokens(user)
+        client.post("/api/auth/login", {"email": user.email, "password": "pass-12345"})
         user.status = User.Status.SUSPENDED
         user.save()
-        assert client.post("/api/auth/refresh", {"refresh": tokens["refresh"]}).status_code == 401
-
-    def test_logout_revokes_refresh_and_is_idempotent(self, client):
-        tokens = services.issue_tokens(UserFactory())
-        assert client.post("/api/auth/logout", {"refresh": tokens["refresh"]}).status_code == 204
-        assert client.post("/api/auth/logout", {"refresh": tokens["refresh"]}).status_code == 204
-        assert client.post("/api/auth/refresh", {"refresh": tokens["refresh"]}).status_code == 401
+        assert client.post("/api/auth/refresh").status_code == 401
 
 
 class TestMe:

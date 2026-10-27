@@ -4,6 +4,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers as default_cors_headers
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -25,6 +26,7 @@ DJANGO_APPS = [
     "django.contrib.postgres",
 ]
 THIRD_PARTY_APPS = [
+    "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
@@ -44,6 +46,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # before CommonMiddleware, which can answer early
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -125,12 +128,21 @@ REST_FRAMEWORK = {
 }
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=15)),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=14)),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=1)),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+# The refresh token travels only in this HttpOnly cookie, never in a response body. The path keeps
+# it off every request except /api/auth/*. Production turns Secure on (production.py).
+# SameSite=Lax needs the frontend and API on the same site; a cross-site deployment needs
+# SameSite=None, which browsers only accept together with Secure.
+AUTH_REFRESH_COOKIE_NAME = env("AUTH_REFRESH_COOKIE_NAME", default="refresh_token")
+AUTH_REFRESH_COOKIE_PATH = env("AUTH_REFRESH_COOKIE_PATH", default="/api/auth/")
+AUTH_REFRESH_COOKIE_SECURE = env.bool("AUTH_REFRESH_COOKIE_SECURE", default=False)
+AUTH_REFRESH_COOKIE_SAMESITE = env("AUTH_REFRESH_COOKIE_SAMESITE", default="Lax")
+AUTH_REFRESH_COOKIE_DOMAIN = env("AUTH_REFRESH_COOKIE_DOMAIN", default=None)
 SPECTACULAR_SETTINGS = {
     "TITLE": "Pre Pro Post API",
     "VERSION": "0.1.0",
@@ -145,7 +157,18 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="Pre Pro Post <no-reply@prepropost.local>")
-FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000").rstrip("/")
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173").rstrip("/")
+
+# --- CORS ------------------------------------------------------------------
+# Only the listed origins, never "allow all": the browser sends the refresh cookie on credentialed
+# requests, so a wildcard origin would let any site drive a signed-in session.
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[FRONTEND_URL])
+CORS_ALLOW_CREDENTIALS = True
+CORS_URLS_REGEX = r"^/api/.*$"
+CORS_EXPOSE_HEADERS = ["ETag"]
+# /api/bootstrap is revalidated with If-None-Match, which is not CORS-safelisted, so the preflight
+# must allow it on top of the defaults (authorization, content-type, ...).
+CORS_ALLOW_HEADERS = (*default_cors_headers, "if-none-match")
 
 # --- Celery ----------------------------------------------------------------
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")

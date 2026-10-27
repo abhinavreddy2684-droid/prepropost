@@ -172,9 +172,8 @@ paths:
   /api/auth/login:
     post:
       operationId: auth_login_create
-      description: 'Credential endpoints: no token needed, tighter scoped throttle
-        (set per subclass).'
-      summary: Exchange email and password for tokens
+      description: Returns the access token and sets the refresh cookie.
+      summary: Exchange email and password for an access token
       tags:
       - auth
       requestBody:
@@ -193,10 +192,18 @@ paths:
       - {}
       responses:
         '200':
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: The refresh token as an HttpOnly cookie (name AUTH_REFRESH_COOKIE_NAME,
+                default `refresh_token`; Path=/api/auth/; SameSite=Lax; Secure in
+                production; max-age = refresh lifetime). It is never in the response
+                body.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenPair'
+                $ref: '#/components/schemas/AccessToken'
           description: ''
         '401':
           content:
@@ -207,64 +214,53 @@ paths:
   /api/auth/logout:
     post:
       operationId: auth_logout_create
-      description: 'Credential endpoints: no token needed, tighter scoped throttle
-        (set per subclass).'
-      summary: Revoke a refresh token
+      description: 'No body. Idempotent: always 204, even with no cookie or an invalid
+        one. Access tokens stay valid until they expire.'
+      summary: 'Sign out: revoke the refresh cookie''s token and clear the cookie'
       tags:
       - auth
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshToken'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/RefreshToken'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/RefreshToken'
-        required: true
       security:
       - {}
       responses:
         '204':
           description: No response body
-        '400':
+  /api/auth/refresh:
+    post:
+      operationId: auth_refresh_create
+      description: No body. Reads the refresh cookie, rotates it (the old token is
+        blacklisted) and returns a new access token with a rotated cookie. A missing,
+        invalid, expired or already used cookie is a 401; a refresh token in the body
+        is ignored.
+      summary: Get a new access token from the refresh cookie
+      tags:
+      - auth
+      security:
+      - {}
+      responses:
+        '200':
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: The refresh token as an HttpOnly cookie (name AUTH_REFRESH_COOKIE_NAME,
+                default `refresh_token`; Path=/api/auth/; SameSite=Lax; Secure in
+                production; max-age = refresh lifetime). It is never in the response
+                body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessToken'
+          description: ''
+        '401':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: ''
-  /api/auth/refresh:
-    post:
-      operationId: auth_refresh_create
-      description: Rotates the refresh token; the old one is blacklisted.
-      tags:
-      - auth
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TokenRefresh'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/TokenRefresh'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/TokenRefresh'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenRefresh'
-          description: ''
   /api/auth/register:
     post:
       operationId: auth_register_create
-      description: 'Credential endpoints: no token needed, tighter scoped throttle
-        (set per subclass).'
+      description: Returns the access token and sets the refresh cookie.
       summary: Create an account and sign in
       tags:
       - auth
@@ -284,6 +280,14 @@ paths:
       - {}
       responses:
         '201':
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: The refresh token as an HttpOnly cookie (name AUTH_REFRESH_COOKIE_NAME,
+                default `refresh_token`; Path=/api/auth/; SameSite=Lax; Secure in
+                production; max-age = refresh lifetime). It is never in the response
+                body.
           content:
             application/json:
               schema:
@@ -755,6 +759,137 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: ''
         '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+  /api/talent:
+    get:
+      operationId: talent_list
+      description: 'Public: callable with or without a bearer token (an expired or
+        invalid token is treated as anonymous, never a 401). Newest profile activity
+        first, cursor-paginated (`limit` up to 100, `cursor` from `next`/`previous`).
+        Cards carry no private fields. `gender`, `min_age` and `max_age` are restricted:
+        401 if you are not signed in, 403 unless you are an approved recruiter; the
+        public listing never sends them.'
+      summary: Search published talent
+      parameters:
+      - in: query
+        name: available
+        schema:
+          type: boolean
+        description: 'true: not fully booked over the next 7 days. false: fully booked.'
+      - in: query
+        name: city
+        schema:
+          type: string
+          maxLength: 140
+          pattern: ^[-a-zA-Z0-9_]+$
+          minLength: 1
+        description: City slug. Slugs are unique only within a state; add `state`
+          to be exact.
+      - in: query
+        name: craft
+        schema:
+          type: string
+          maxLength: 140
+          pattern: ^[-a-zA-Z0-9_]+$
+          minLength: 1
+        description: Craft slug. Unknown slugs match nobody.
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: query
+        name: gender
+        schema:
+          enum:
+          - male
+          - female
+          - non_binary
+          - other
+          type: string
+          minLength: 1
+        description: |-
+          RESTRICTED to approved recruiters.
+
+          * `male` - Male
+          * `female` - Female
+          * `non_binary` - Non-binary
+          * `other` - Other
+      - in: query
+        name: genres
+        schema:
+          type: string
+          maxLength: 410
+        description: Comma-separated, at most 10. Matches talent with any of them.
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: max_age
+        schema:
+          type: integer
+          maximum: 120
+          minimum: 0
+        description: Years, inclusive. RESTRICTED to approved recruiters.
+      - in: query
+        name: min_age
+        schema:
+          type: integer
+          maximum: 120
+          minimum: 0
+        description: Years, inclusive. RESTRICTED to approved recruiters.
+      - in: query
+        name: primary_craft_only
+        schema:
+          type: boolean
+        description: 'With `craft`: only talent whose primary craft it is.'
+      - in: query
+        name: q
+        schema:
+          type: string
+          maxLength: 100
+        description: Case-insensitive match on professional name, bio or city name.
+      - in: query
+        name: state
+        schema:
+          type: string
+          maxLength: 140
+          pattern: ^[-a-zA-Z0-9_]+$
+          minLength: 1
+        description: State slug.
+      tags:
+      - talent
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTalentCardList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: ''
+        '403':
           content:
             application/json:
               schema:
@@ -1510,6 +1645,15 @@ paths:
           description: ''
 components:
   schemas:
+    AccessToken:
+      type: object
+      description: The refresh token is never in a body; it is an HttpOnly cookie
+        (accounts.cookies).
+      properties:
+        access:
+          type: string
+      required:
+      - access
     ApprovedAvatar:
       type: object
       properties:
@@ -1678,6 +1822,16 @@ components:
       - slug
       - state_name
       - state_slug
+    CraftRef:
+      type: object
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+      required:
+      - slug
+      - title
     Crafts:
       type: object
       properties:
@@ -2156,6 +2310,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RecruiterReview'
+    PaginatedTalentCardList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentCard'
     PatchedExperienceWrite:
       type: object
       properties:
@@ -2648,13 +2821,6 @@ components:
         * `individual` - Individual
         * `company` - Company
         * `production_house` - Production house
-    RefreshToken:
-      type: object
-      properties:
-        refresh:
-          type: string
-      required:
-      - refresh
     Register:
       type: object
       properties:
@@ -2670,16 +2836,15 @@ components:
       - password
     Registered:
       type: object
+      description: The refresh token is never in a body; it is an HttpOnly cookie
+        (accounts.cookies).
       properties:
         access:
-          type: string
-        refresh:
           type: string
         user:
           $ref: '#/components/schemas/Me'
       required:
       - access
-      - refresh
       - user
     Reject:
       type: object
@@ -2748,6 +2913,53 @@ components:
         * `hidden` - Hidden
         * `failed` - Failed
         * `rejected` - Rejected
+    TalentCard:
+      type: object
+      description: 'A search result. A strict whitelist: no bio, experiences or any
+        private field.'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        professional_name:
+          type: string
+          maxLength: 150
+        city:
+          allOf:
+          - $ref: '#/components/schemas/CityOut'
+          readOnly: true
+        years_experience:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+        genres:
+          type: array
+          items:
+            type: string
+            maxLength: 40
+        primary_craft:
+          allOf:
+          - $ref: '#/components/schemas/CraftRef'
+          nullable: true
+          readOnly: true
+        avatar:
+          allOf:
+          - $ref: '#/components/schemas/SignedUrls'
+          nullable: true
+          readOnly: true
+        is_available:
+          type: boolean
+          readOnly: true
+          description: False only if every one of the next 7 days is unavailable.
+      required:
+      - avatar
+      - city
+      - id
+      - is_available
+      - primary_craft
+      - professional_name
     TalentCraftOut:
       type: object
       properties:
@@ -2797,27 +3009,6 @@ components:
       required:
       - full_name
       - professional_name
-    TokenPair:
-      type: object
-      properties:
-        access:
-          type: string
-        refresh:
-          type: string
-      required:
-      - access
-      - refresh
-    TokenRefresh:
-      type: object
-      properties:
-        access:
-          type: string
-          readOnly: true
-        refresh:
-          type: string
-      required:
-      - access
-      - refresh
     UploadTicket:
       type: object
       properties:

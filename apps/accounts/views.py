@@ -1,17 +1,33 @@
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.common.serializers import ErrorEnvelopeSerializer
 
-from . import serializers, services
+from . import cookies, serializers, services
 from .roles import roles_for
 
 _ERROR = OpenApiResponse(ErrorEnvelopeSerializer)
+_SET_COOKIE = OpenApiParameter(
+    name="Set-Cookie",
+    type=str,
+    location=OpenApiParameter.HEADER,
+    response=[200, 201],
+    description=(
+        "The refresh token as an HttpOnly cookie (name AUTH_REFRESH_COOKIE_NAME, default "
+        "`refresh_token`; Path=/api/auth/; SameSite=Lax; Secure in production; max-age = refresh "
+        "lifetime). It is never in the response body."
+    ),
+)
+
+
+def _with_refresh_cookie(response: Response, tokens: dict) -> Response:
+    """Split an issued pair: the access token stays in the body, the refresh goes in the cookie."""
+    cookies.set_refresh_cookie(response, tokens["refresh"])
+    return response
 
 
 def _me(user) -> dict:
@@ -36,6 +52,8 @@ class RegisterView(_PublicView):
 
     @extend_schema(
         summary="Create an account and sign in",
+        description="Returns the access token and sets the refresh cookie.",
+        parameters=[_SET_COOKIE],
         request=serializers.RegisterSerializer,
         responses={201: serializers.RegisteredSerializer, 400: _ERROR, 409: _ERROR},
     )
@@ -43,46 +61,67 @@ class RegisterView(_PublicView):
         data = serializers.RegisterSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         user = services.register_user(**data.validated_data)
-        return Response(
-            {**services.issue_tokens(user), "user": _me(user)}, status=status.HTTP_201_CREATED
+        tokens = services.issue_tokens(user)
+        response = Response(
+            {"access": tokens["access"], "user": _me(user)}, status=status.HTTP_201_CREATED
         )
+        return _with_refresh_cookie(response, tokens)
 
 
 class LoginView(_PublicView):
     throttle_scope = "auth_login"
 
     @extend_schema(
-        summary="Exchange email and password for tokens",
+        summary="Exchange email and password for an access token",
+        description="Returns the access token and sets the refresh cookie.",
+        parameters=[_SET_COOKIE],
         request=serializers.LoginSerializer,
-        responses={200: serializers.TokenPairSerializer, 401: _ERROR},
+        responses={200: serializers.AccessTokenSerializer, 401: _ERROR},
     )
     def post(self, request):
         data = serializers.LoginSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         user = services.login_user(**data.validated_data)
-        return Response(services.issue_tokens(user))
+        tokens = services.issue_tokens(user)
+        return _with_refresh_cookie(Response({"access": tokens["access"]}), tokens)
 
 
-class RefreshView(TokenRefreshView):
-    """Rotates the refresh token; the old one is blacklisted."""
+class RefreshView(_PublicView):
+    """Reads the refresh cookie, never the body. The old token is blacklisted on rotation."""
 
-    throttle_classes = [ScopedRateThrottle]
     throttle_scope = "auth_login"
+
+    @extend_schema(
+        summary="Get a new access token from the refresh cookie",
+        description=(
+            "No body. Reads the refresh cookie, rotates it (the old token is blacklisted) and "
+            "returns a new access token with a rotated cookie. A missing, invalid, expired or "
+            "already used cookie is a 401; a refresh token in the body is ignored."
+        ),
+        parameters=[_SET_COOKIE],
+        request=None,
+        responses={200: serializers.AccessTokenSerializer, 401: _ERROR},
+    )
+    def post(self, request):
+        tokens = services.refresh_tokens(refresh_token=cookies.read_refresh_cookie(request))
+        return _with_refresh_cookie(Response({"access": tokens["access"]}), tokens)
 
 
 class LogoutView(_PublicView):
     throttle_scope = "auth_login"
 
     @extend_schema(
-        summary="Revoke a refresh token",
-        request=serializers.RefreshTokenSerializer,
-        responses={204: None, 400: _ERROR},
+        summary="Sign out: revoke the refresh cookie's token and clear the cookie",
+        description=(
+            "No body. Idempotent: always 204, even with no cookie or an invalid one. Access "
+            "tokens stay valid until they expire."
+        ),
+        request=None,
+        responses={204: None},
     )
     def post(self, request):
-        data = serializers.RefreshTokenSerializer(data=request.data)
-        data.is_valid(raise_exception=True)
-        services.logout(refresh_token=data.validated_data["refresh"])
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        services.logout(refresh_token=cookies.read_refresh_cookie(request))
+        return cookies.clear_refresh_cookie(Response(status=status.HTTP_204_NO_CONTENT))
 
 
 class VerifyEmailView(_PublicView):

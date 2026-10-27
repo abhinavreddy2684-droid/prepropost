@@ -25,6 +25,8 @@ common  <-  accounts, reference  <-  media_library, talent, recruiters  <-  hiri
                                     notifications, analytics  ---(subscribe)--+
 ```
 
+* `talent` asks `recruiters.selectors.is_verified_recruiter` to gate the restricted search filters
+  (gender, age); `recruiters` never imports `talent`.
 * `hiring` asks `recruiters.selectors.is_verified_recruiter` and
   `talent.selectors.has_craft` - it never queries their tables.
 * `notifications` also subscribes to `recruiters.events` (review outcome: in-app + email) and
@@ -66,7 +68,7 @@ Services give friendly errors; constraints guarantee correctness under concurren
 |---|---|
 | New craft / city / state | Admin or `seed_reference`. No code change; bootstrap cache refreshes itself. |
 | New enum for the frontend | `register_enum("name", Choices)` in the owning app. |
-| New talent filter | One field on `TalentFilters` + one clause in `search_talents`. |
+| New talent filter | One field on `TalentFilters`, one clause in `search_talents`, one field on `TalentSearchParamsSerializer`. A filter on a private field also goes in `RESTRICTED_FILTERS`. |
 | Craft-specific fields (vocal range ...) | `TalentCraft.attributes` JSON (validate per craft later). |
 | New offer transition | One row in `hiring/state_machine.py` + a service + an event. |
 | New media purpose (e.g. a recruiter logo) | A `MediaPolicy` registered in the owning app's `ready()` (numbers in settings), a model that points at `Media`, and a subscriber for the media events of that purpose. Core does not change. |
@@ -84,6 +86,11 @@ Services give friendly errors; constraints guarantee correctness under concurren
 
 * JWT via simplejwt: short-lived access token, rotating refresh token, old refresh tokens
   blacklisted (`token_blacklist`; expired rows are pruned daily by a beat task).
+* The access token is returned in the body (the client keeps it in memory, bearer header). The
+  refresh token is **never in a body**: it is an HttpOnly cookie (`Path=/api/auth/`, `SameSite=Lax`,
+  Secure in production; `AUTH_REFRESH_COOKIE_*`) set and cleared only by `accounts.cookies`.
+  `/api/auth/refresh` and `/logout` read the cookie and take no body. Services return both tokens;
+  views split them. Cross-origin calls are allowed only for `CORS_ALLOWED_ORIGINS` (never allow-all).
 * Emails are lowercased in `accounts.services`, not constrained in the DB. Create users through
   `User.objects.create_user` or `register_user`, never `User(...)`.
 * Email verification uses a signed, expiring token bound to the current address (no table). The
