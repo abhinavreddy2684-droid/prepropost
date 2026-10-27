@@ -172,9 +172,8 @@ paths:
   /api/auth/login:
     post:
       operationId: auth_login_create
-      description: 'Credential endpoints: no token needed, tighter scoped throttle
-        (set per subclass).'
-      summary: Exchange email and password for tokens
+      description: Returns the access token and sets the refresh cookie.
+      summary: Exchange email and password for an access token
       tags:
       - auth
       requestBody:
@@ -193,10 +192,18 @@ paths:
       - {}
       responses:
         '200':
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: The refresh token as an HttpOnly cookie (name AUTH_REFRESH_COOKIE_NAME,
+                default `refresh_token`; Path=/api/auth/; SameSite=Lax; Secure in
+                production; max-age = refresh lifetime). It is never in the response
+                body.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenPair'
+                $ref: '#/components/schemas/AccessToken'
           description: ''
         '401':
           content:
@@ -207,64 +214,53 @@ paths:
   /api/auth/logout:
     post:
       operationId: auth_logout_create
-      description: 'Credential endpoints: no token needed, tighter scoped throttle
-        (set per subclass).'
-      summary: Revoke a refresh token
+      description: 'No body. Idempotent: always 204, even with no cookie or an invalid
+        one. Access tokens stay valid until they expire.'
+      summary: 'Sign out: revoke the refresh cookie''s token and clear the cookie'
       tags:
       - auth
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshToken'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/RefreshToken'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/RefreshToken'
-        required: true
       security:
       - {}
       responses:
         '204':
           description: No response body
-        '400':
+  /api/auth/refresh:
+    post:
+      operationId: auth_refresh_create
+      description: No body. Reads the refresh cookie, rotates it (the old token is
+        blacklisted) and returns a new access token with a rotated cookie. A missing,
+        invalid, expired or already used cookie is a 401; a refresh token in the body
+        is ignored.
+      summary: Get a new access token from the refresh cookie
+      tags:
+      - auth
+      security:
+      - {}
+      responses:
+        '200':
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: The refresh token as an HttpOnly cookie (name AUTH_REFRESH_COOKIE_NAME,
+                default `refresh_token`; Path=/api/auth/; SameSite=Lax; Secure in
+                production; max-age = refresh lifetime). It is never in the response
+                body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessToken'
+          description: ''
+        '401':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: ''
-  /api/auth/refresh:
-    post:
-      operationId: auth_refresh_create
-      description: Rotates the refresh token; the old one is blacklisted.
-      tags:
-      - auth
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TokenRefresh'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/TokenRefresh'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/TokenRefresh'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenRefresh'
-          description: ''
   /api/auth/register:
     post:
       operationId: auth_register_create
-      description: 'Credential endpoints: no token needed, tighter scoped throttle
-        (set per subclass).'
+      description: Returns the access token and sets the refresh cookie.
       summary: Create an account and sign in
       tags:
       - auth
@@ -284,6 +280,14 @@ paths:
       - {}
       responses:
         '201':
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: The refresh token as an HttpOnly cookie (name AUTH_REFRESH_COOKIE_NAME,
+                default `refresh_token`; Path=/api/auth/; SameSite=Lax; Secure in
+                production; max-age = refresh lifetime). It is never in the response
+                body.
           content:
             application/json:
               schema:
@@ -1510,6 +1514,15 @@ paths:
           description: ''
 components:
   schemas:
+    AccessToken:
+      type: object
+      description: The refresh token is never in a body; it is an HttpOnly cookie
+        (accounts.cookies).
+      properties:
+        access:
+          type: string
+      required:
+      - access
     ApprovedAvatar:
       type: object
       properties:
@@ -2648,13 +2661,6 @@ components:
         * `individual` - Individual
         * `company` - Company
         * `production_house` - Production house
-    RefreshToken:
-      type: object
-      properties:
-        refresh:
-          type: string
-      required:
-      - refresh
     Register:
       type: object
       properties:
@@ -2670,16 +2676,15 @@ components:
       - password
     Registered:
       type: object
+      description: The refresh token is never in a body; it is an HttpOnly cookie
+        (accounts.cookies).
       properties:
         access:
-          type: string
-        refresh:
           type: string
         user:
           $ref: '#/components/schemas/Me'
       required:
       - access
-      - refresh
       - user
     Reject:
       type: object
@@ -2797,27 +2802,6 @@ components:
       required:
       - full_name
       - professional_name
-    TokenPair:
-      type: object
-      properties:
-        access:
-          type: string
-        refresh:
-          type: string
-      required:
-      - access
-      - refresh
-    TokenRefresh:
-      type: object
-      properties:
-        access:
-          type: string
-          readOnly: true
-        refresh:
-          type: string
-      required:
-      - access
-      - refresh
     UploadTicket:
       type: object
       properties:

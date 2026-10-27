@@ -11,17 +11,14 @@ class LoginSerializer(RegisterSerializer):
     pass
 
 
-class RefreshTokenSerializer(serializers.Serializer):
-    refresh = serializers.CharField()
-
-
 class VerifyEmailSerializer(serializers.Serializer):
     token = serializers.CharField()
 
 
-class TokenPairSerializer(serializers.Serializer):
+class AccessTokenSerializer(serializers.Serializer):
+    """The refresh token is never in a body; it is an HttpOnly cookie (accounts.cookies)."""
+
     access = serializers.CharField()
-    refresh = serializers.CharField()
 
 
 class MeSerializer(serializers.Serializer):
@@ -31,5 +28,5 @@ class MeSerializer(serializers.Serializer):
     roles = serializers.ListField(child=serializers.CharField())
 
 
-class RegisteredSerializer(TokenPairSerializer):
+class RegisteredSerializer(AccessTokenSerializer):
     user = MeSerializer()

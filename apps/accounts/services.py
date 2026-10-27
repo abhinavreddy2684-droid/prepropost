@@ -13,6 +13,8 @@ from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.settings import api_settings as jwt_settings
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.common.events import publish
@@ -65,8 +67,37 @@ def login_user(*, email: str, password: str) -> User:
 
 
 def issue_tokens(user: User) -> dict[str, str]:
+    """Mint a pair. Callers must keep `refresh` out of response bodies (views set the cookie)."""
     refresh = RefreshToken.for_user(user)
     return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
+@transaction.atomic
+def refresh_tokens(*, refresh_token: str) -> dict[str, str]:
+    """Rotate a refresh token: blacklist it and issue a new pair.
+
+    One generic 401 for a missing, malformed, expired, already used or orphaned token, or a
+    suspended account.
+    """
+    invalid = Unauthenticated("Invalid or expired refresh token.", code="invalid_refresh_token")
+    if not refresh_token:
+        raise Unauthenticated("Refresh token missing.", code="refresh_token_missing")
+    try:
+        jti = RefreshToken(refresh_token, verify=False).payload[jwt_settings.JTI_CLAIM]
+    except (TokenError, KeyError) as exc:
+        raise invalid from exc
+    # Lock the row, then verify, so two concurrent refreshes cannot both pass the blacklist check
+    # and mint two live children from one token.
+    OutstandingToken.objects.select_for_update().filter(jti=jti).first()
+    try:
+        old = RefreshToken(refresh_token)  # signature, expiry, type and blacklist
+    except TokenError as exc:
+        raise invalid from exc
+    user = User.objects.filter(pk=old.payload.get(jwt_settings.USER_ID_CLAIM)).first()
+    if user is None or not user.is_active:
+        raise invalid
+    old.blacklist()
+    return issue_tokens(user)
 
 
 @transaction.atomic
