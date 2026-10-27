@@ -1,6 +1,6 @@
 # Pre Pro Post: backend delivery plan (MVP-A and MVP-B)
 
-**Status:** foundation v0.1.0, M1 done (M1.1 to M1.5), M2 media done; M3 next.
+**Status:** foundation v0.1.0, M1 done (M1.1 to M1.5), M2 media done; M3 list endpoint done.
 
 ## Principles
 
@@ -21,7 +21,7 @@
   PDF thumbnails, non-image metadata stripping or virus scanning; stuck processing is only
   logged.
 - **M3 Discovery:** 3.1 filtered list, 3.2 text search and cursor paging, 3.3 talent detail.
-  Search logic exists in selectors; endpoints do not. Shortlist is deferred.
+  3.1 and 3.2 done (`GET /api/talent`); 3.3 detail already exists. Shortlist is deferred.
 - **M4 Projects and offers:** 4.1 projects, 4.2 offers, 4.3 accept/decline/expiry,
   4.4 notifications, 4.5 funnel analytics. Services, events and notifications exist; endpoints do
   not.
