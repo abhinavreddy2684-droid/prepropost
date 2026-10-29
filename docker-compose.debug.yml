@@ -6,8 +6,7 @@ services:
     command: >
       sh -c "python manage.py migrate &&
              python manage.py seed_reference &&
-             python -m debugpy --listen 0.0.0.0:5678
-                 manage.py runserver 0.0.0.0:8000 --noreload"
+             python -m debugpy --listen 0.0.0.0:5678 manage.py runserver 0.0.0.0:8000 --noreload"
     ports:
       # Loopback only: debugpy has no authentication, anyone who can reach it can run code.
       - "127.0.0.1:5678:5678"
