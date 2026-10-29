@@ -1,8 +1,9 @@
-.PHONY: up down migrate seed test lint fmt shell schema schema-check
+.PHONY: up debug down migrate seed test lint fmt shell schema schema-check
 # Test settings need no database, env vars or Docker, so the spec is identical everywhere.
 SPECTACULAR = DJANGO_SETTINGS_MODULE=config.settings.test python manage.py spectacular --validate --fail-on-warn
 
 up:       ; docker compose up --build
+debug:    ; docker compose -f docker-compose.yml -f docker-compose.debug.yml up --build
 down:     ; docker compose down
 migrate:  ; docker compose run --rm api python manage.py migrate
 seed:     ; docker compose run --rm api python manage.py seed_reference

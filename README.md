@@ -6,6 +6,7 @@ Django 5 + DRF, PostgreSQL, Redis, Celery. See `ARCHITECTURE.md` for design.
 
     cp .env.example .env
     make up            # api on :8000 (migrates and seeds crafts/locations on start)
+    make debug         # same, with the api attachable from VS Code (docs/DEBUGGING.md)
 
 ## Develop
 
