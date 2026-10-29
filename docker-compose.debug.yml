@@ -1,0 +1,13 @@
+# Debug overlay for VS Code: `make debug` (see docs/DEBUGGING.md).
+# Runs the api under debugpy and waits for the "Docker: attach to api" launch config.
+# --noreload keeps one process alive so the debug session survives; restart the api to pick up edits.
+services:
+  api:
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py seed_reference &&
+             python -m debugpy --listen 0.0.0.0:5678
+                 manage.py runserver 0.0.0.0:8000 --noreload"
+    ports:
+      # Loopback only: debugpy has no authentication, anyone who can reach it can run code.
+      - "127.0.0.1:5678:5678"
